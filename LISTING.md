@@ -1,4 +1,4 @@
-# Store listing copy — PB's ChatAssistant 1.0.2
+# Store listing copy — PB's ChatAssistant 1.0.3
 
 Text for the ZOS Console AddOn Uploader. Plain text, no markup, so it survives whatever the
 uploader does to it.
@@ -69,7 +69,7 @@ NOTES
 
 - Built and tested for console. On PC, bind a key to Controls -> PB's ChatAssistant -> Open Chat.
 - No dependencies.
-- The add-on prints its version when you log in, so you can always tell which build is running.
+- /pbchat reports the running version and settings.
 
 ---
 
