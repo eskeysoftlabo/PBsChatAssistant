@@ -73,6 +73,7 @@ local DEFAULTS = {
 	delayMs = 100,
 	watch = true,
 	autoSafe = true,
+	channelKeys = true,
 	followInput = false,
 	idleSeconds = 15,
 	triggerOnKeyboard = false,
@@ -88,6 +89,17 @@ local ENTER_KEYS = {
 	[KEY_NUMPAD_ENTER] = true,
 }
 
+-- Built rather than declared. A table constructor with a nil key raises "table index is nil" at
+-- load, which would take the whole add-on down -- and KEY_ENTER is confirmed on PS5 while these
+-- two are not yet. Cheap insurance against a constant that turns out not to exist.
+local CHANNEL_KEYS = {}
+if KEY_LEFTARROW then
+	CHANNEL_KEYS[KEY_LEFTARROW] = -1
+end
+if KEY_RIGHTARROW then
+	CHANNEL_KEYS[KEY_RIGHTARROW] = 1
+end
+
 local CATCHER_CONTROL_NAMES = {
 	default = "PBsChatAssistantKeyCatcher",
 	high = "PBsChatAssistantKeyCatcherHigh",
@@ -101,7 +113,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.0.3"
+local VERSION = "1.1.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -298,6 +310,82 @@ function addon:StartChat()
 end
 
 ----------------------------------------------------------------------------------------------
+-- Channel cycling
+----------------------------------------------------------------------------------------------
+
+-- Left and right walk the channel the next message will go to.
+--
+-- Only while the chat box is CLOSED. Inside an open box the arrow keys move the text cursor, and
+-- taking them would be a poor trade for a channel switch. So the gesture is: pick the channel on
+-- the HUD, then press Enter and type. The choice survives the open -- StartTextEntry only resets
+-- the channel when there is not one already set.
+--
+-- This costs the gamepad nothing it was not already costing. The arrows are read by the same
+-- catcher that reads Enter, which is up only when Enter is armed, so a build with the channel
+-- keys behaves exactly like one without until /pbchat enter is used.
+local function GetCyclableChannels()
+	if type(ZO_ChatSystem_GetChannelInfo) ~= "function"
+		or type(ZO_ChatSystem_GetChannelSwitchLookupTable) ~= "function" then
+		return {}
+	end
+
+	local channelInfo = ZO_ChatSystem_GetChannelInfo()
+	local switchLookup = ZO_ChatSystem_GetChannelSwitchLookupTable()
+	local channels = {}
+
+	for channelId, data in pairs(channelInfo) do
+		local switch = switchLookup[channelId]
+		-- The same requirement test the chat system applies when it decides whether a channel
+		-- can be selected: not in a group, no guild, no such channel to walk into.
+		local available = not data.requires or data.requires(channelId)
+		-- A whisper needs someone to whisper to, so there is nothing to cycle into.
+		local needsTarget = data.saveTarget ~= nil
+
+		if switch and available and not needsTarget then
+			channels[#channels + 1] = { id = channelId, switch = switch, name = data.name }
+		end
+	end
+
+	-- By switch, which is how the game's own channel dropdown is ordered, so the sequence the
+	-- arrows walk is the sequence the player has already seen there.
+	table.sort(channels, function(a, b)
+		return a.switch < b.switch
+	end)
+
+	return channels
+end
+
+function addon:CycleChannel(step)
+	local chat = GetChatSystem()
+	if not chat or type(chat.SetChannel) ~= "function" then
+		return
+	end
+
+	local channels = GetCyclableChannels()
+	if #channels == 0 then
+		return
+	end
+
+	local index = 1
+	for i, channel in ipairs(channels) do
+		if channel.id == chat.currentChannel then
+			index = i
+			break
+		end
+	end
+
+	local target = channels[((index - 1 + step) % #channels) + 1]
+	chat:SetChannel(target.id)
+	self:Log("channel -> %s", tostring(target.name))
+
+	-- An alert rather than a chat line: the box is closed, so there is nothing on screen saying
+	-- which channel is selected, and a line per key press would bury the conversation.
+	if type(ZO_Alert) == "function" then
+		ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, target.name)
+	end
+end
+
+----------------------------------------------------------------------------------------------
 -- Catching the key
 ----------------------------------------------------------------------------------------------
 
@@ -471,6 +559,12 @@ function addon:OnCatcherKey(control, key)
 
 	if ENTER_KEYS[key] then
 		self:StartChat()
+		return
+	end
+
+	local step = CHANNEL_KEYS[key]
+	if step and self.sv.channelKeys and not IsTextEntryOpen() then
+		self:CycleChannel(step)
 	end
 end
 
@@ -855,6 +949,9 @@ function addon:InitSlashCommand()
 			self.sv.captureMode = "off"
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
+		elseif command == "channel" then
+			self.sv.channelKeys = (argument ~= "off")
+			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
 		elseif command == "autosafe" then
 			self.sv.autoSafe = (argument ~= "off")
 			Print("auto safe %s", self.sv.autoSafe and "on" or "off")

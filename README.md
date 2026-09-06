@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.0.3 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.1.0 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -53,6 +53,23 @@ opened a moment ago and re-cycling it would throw the message away; and it acts 
 re-arming only when the box closes, so it cannot loop.
 
 `/pbchat watch off` turns it off.
+
+## Channel keys
+
+With Enter armed, **left and right walk the channel** the next message will go to -- say, zone,
+party, guild -- announced as an alert. Pick the channel on the HUD, then press Enter and type;
+the choice survives the open, because the chat system only resets the channel when there is not
+one set already.
+
+Only while the chat box is **closed**. Inside an open box the arrow keys move the text cursor,
+and taking them would be a poor trade for a channel switch.
+
+The list is the channels available to you right now -- the same requirement test the chat system
+itself applies, so no cycling into party chat when you are not in a group -- ordered by their
+slash command, which is how the game's own channel dropdown is ordered.
+
+This costs the gamepad nothing extra: the arrows are read by the same catcher that reads Enter,
+which is only up while Enter is armed. `/pbchat channel off` turns it off.
 
 ## The wait
 
@@ -117,6 +134,7 @@ That second one is **not solved**. See Limitations.
 | `/pbchat delay <ms>` | The wait before opening, 0-5000, default 100 |
 | `/pbchat watch on\|off` | The focus watcher |
 | `/pbchat autosafe on\|off` | Drop the catcher once the input screen is up |
+| `/pbchat channel on\|off` | Left/right cycle the outgoing channel while armed |
 | `/pbchat open [s]` | Open the box after N seconds, no key catching involved |
 | `/pbchat enter` | Catcher on -- catches every Enter, costs the buttons, expires in 60 s |
 | `/pbchat safe` | Catcher off -- buttons back |
@@ -205,8 +223,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.0.3
-## Version: 1.0.3
+## Title: PB’s ChatAssistant 1.1.0
+## Version: 1.1.0
 ```
 
 ---
