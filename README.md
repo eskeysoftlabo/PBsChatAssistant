@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.2.0 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.3.0 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -84,6 +84,16 @@ Controls -> PB’s ChatAssistant -> Next Chat Channel
 and the channel walks with nothing shown, no buttons paused, and no arming. Unlike the arrows,
 these also work while the chat box is open, since a bound button has no text cursor to take.
 
+**Next Chat Channel** ships bound to **L1 + L3**. L2 + L3 cannot be expressed: gamepad chords are
+not key-plus-modifier the way keyboard ones are, but a fixed list of `KEY_GAMEPAD_BOTH_*` codes,
+and no left-trigger-plus-left-stick code exists in it. L1 + L3 is the nearest neighbour that does.
+Only Next gets a default -- the list wraps, so one button reaches every channel.
+
+The default is declared with `CreateDefaultActionBind`, which is documented and unmarked but
+appears nowhere in the game's own UI source, so it is unproven. It is called last in
+initialisation: if it throws, the add-on is already built and keeps working, and the actions can
+still be bound by hand.
+
 ## The wait
 
 `/pbchat delay <ms>`, 0-5000, default 100.
@@ -138,6 +148,12 @@ the UI instead of to the gameplay bindings simply because a control is up and wa
 sticks survive because `DIRECTIONAL_INPUT` is a separate path.
 
 That second one is **not solved**. See Limitations.
+
+## Settings panel
+
+**Settings -> Add-Ons -> PB’s ChatAssistant** (LibHarvensAddonSettings), with everything the
+slash commands reach: the master switch, the wait, arming Enter, releasing the keyboard once chat
+opens, the arrow keys, the focus watcher and the log.
 
 ## Commands
 
@@ -220,6 +236,10 @@ back.
 > `ESOUIDocumentation.txt` does not mark `SetSetting` private. The live client does. Where the
 > two disagree, the client wins.
 
+## Requirements
+
+- `LibHarvensAddonSettings` >= 20106, for the settings panel.
+
 ## Layout rules that matter on console
 
 - Folder name, manifest filename and `addon.name` must all match exactly (`PBsChatAssistant`).
@@ -236,8 +256,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.2.0
-## Version: 1.2.0
+## Title: PB’s ChatAssistant 1.3.0
+## Version: 1.3.0
 ```
 
 ---

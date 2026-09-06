@@ -1,4 +1,4 @@
-# Store listing copy — PB's ChatAssistant 1.2.0
+# Store listing copy — PB's ChatAssistant 1.3.0
 
 Text for the ZOS Console AddOn Uploader. Plain text, no markup, so it survives whatever the
 uploader does to it.
@@ -51,6 +51,8 @@ you open the chat window from the controller, which on its own removes most of t
 
 SETTINGS
 
+Settings -> Add-Ons -> PB's ChatAssistant, or the chat commands below.
+
   /pbchat              Show current state
   /pbchat delay <ms>   Pause before the window opens, 0-5000, default 100
   /pbchat enter        Arm the Enter key
@@ -72,7 +74,9 @@ with /pbchat delay 300, then 500.
 NOTES
 
 - Built and tested for console. On PC, bind a key to Controls -> PB's ChatAssistant -> Open Chat.
-- No dependencies.
+- Requires LibHarvensAddonSettings for the settings panel.
+- Next Chat Channel comes bound to L1 + L3. L2 + L3 is not one of the combinations the game
+  offers; rebind it under Controls if you would rather use another.
 - /pbchat reports the running version and settings.
 
 ---

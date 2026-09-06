@@ -16,6 +16,12 @@ local addon = {
 	name = "PBsChatAssistant",
 }
 
+-- Display name is a Lua constant; the version is VERSION below. Both are what the settings
+-- panel shows. Typographic apostrophe (U+2019), matching the manifest title -- the identifier
+-- stays plain ASCII so folder, manifest filename and addon.name can match byte for byte.
+local DISPLAY_NAME = "PB’s ChatAssistant"
+local AUTHOR = "PinkBanther"
+
 local em = EVENT_MANAGER
 
 -- ROUTES
@@ -113,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.2.0"
+local VERSION = "1.3.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1037,6 +1043,13 @@ local function OnAddOnLoaded(_, name)
 	addon:ApplyCatcher()
 	addon:ApplyWatch()
 
+	addon.title = DISPLAY_NAME
+	addon.author = AUTHOR
+	addon.version = VERSION
+	if addon.InitSettings then
+		addon:InitSettings()
+	end
+
 	-- Auto reads the binding route, which on PC depends on which UI is in front. Console never
 	-- fires this.
 	em:RegisterForEvent(addon.name, EVENT_GAMEPAD_PREFERRED_MODE_CHANGED, function()
@@ -1087,6 +1100,23 @@ local function OnAddOnLoaded(_, name)
 			addon:StartChat()
 		end
 	end)
+	-- Default binds, declared LAST on purpose.
+	--
+	-- CreateDefaultActionBind is documented and carries no private or protected marker, but it
+	-- appears nowhere in the game's own UI source, so nothing here has been seen to work. Running
+	-- it after everything else means that if it does throw, the add-on is already built and
+	-- keeps working; only the default bind is lost, and the actions can still be bound by hand.
+	--
+	-- L2 + L3 was asked for and cannot be expressed. Gamepad chords are not key-plus-modifier
+	-- the way keyboard ones are: they are a fixed list of KEY_GAMEPAD_BOTH_* codes, and no
+	-- left-trigger-plus-left-stick code exists in it. L1 + L3 is the nearest neighbour that does.
+	--
+	-- Only NEXT is given a default. The channel list wraps, so one button reaches every channel,
+	-- and spending a second chord on going backwards through a handful of entries is a poor
+	-- trade for a combination the player might want elsewhere.
+	if type(CreateDefaultActionBind) == "function" and KEY_GAMEPAD_BOTH_LEFT_SHOULDER_LEFT_STICK then
+		CreateDefaultActionBind("PBSCHATASSISTANT_CHANNEL_NEXT", KEY_GAMEPAD_BOTH_LEFT_SHOULDER_LEFT_STICK)
+	end
 end
 
 em:RegisterForEvent(addon.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
