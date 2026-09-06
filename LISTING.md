@@ -30,9 +30,8 @@ WHAT IT DOES
 - Open the chat window however you like — the controller combo included — and the input screen
   comes up for it anyway. That part works on its own, all the time, with nothing to arm.
 - Type Japanese the way you would anywhere else on the console, and send.
-- Switch which channel your next message goes to -- say, zone, party, guild -- without opening
-  anything. From the keyboard with the left and right arrow keys while Enter is armed, or from a
-  controller button you bind under Controls -> PB's ChatAssistant, which needs no arming at all.
+- Switch which channel your next message goes to -- say, zone, party, guild -- with the left and
+  right arrow keys, before you open the box.
 
 ABOUT THE CONTROLLER
 
@@ -76,7 +75,9 @@ NOTES
 
 - Built and tested for console. On PC, bind a key to Controls -> PB's ChatAssistant -> Open Chat.
 - Requires LibHarvensAddonSettings for the settings panel.
-- The channel buttons come unbound. Set them under Options -> Controls -> PB's ChatAssistant.
+- Next/Previous Chat Channel are also offered as bindable actions, for platforms that have a
+  keybinding screen. PlayStation does not, so there they cannot be bound and the arrow keys are
+  the way.
 - /pbchat reports the running version and settings.
 
 ---

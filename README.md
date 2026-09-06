@@ -71,40 +71,41 @@ slash command, which is how the game's own channel dropdown is ordered.
 This costs the gamepad nothing extra: the arrows are read by the same catcher that reads Enter,
 which is only up while Enter is armed. `/pbchat channel off` turns it off.
 
-### From the controller, with nothing armed
+### Not from the controller, on PS5
 
-The arrows need the catcher, and the catcher needs Enter armed. A **controller button** does not:
-keyboard keys never reach the binding system on console, but gamepad buttons do. Bind either of
+The plan was a bound controller button: keyboard keys never reach the binding system on console,
+but gamepad buttons do, so a button would have walked the channel with nothing shown, nothing
+armed and no buttons paused. `Bindings.xml` declares **Next Chat Channel** and **Previous Chat
+Channel** for it, and they register -- `/pbchat binds` finds them at 1/7/2 and 1/7/3.
+
+**There is nowhere on PS5 to bind them.** The console has no Controls entry under Options, so the
+keybinding screen the actions would appear in does not exist. Nor can the add-on bind them
+itself: `CreateDefaultActionBind` was tried from `EVENT_ADD_ON_LOADED` and again at file scope
+from a file loaded straight after `Bindings.xml`, and `/pbchat binds` reported "nothing bound"
+both times; `BindKeyToAction`, which would do it directly, is protected.
+
+So the actions register and stay forever out of reach. They are kept because they cost nothing
+and are correct on PC, and because a console update that adds the screen would make them work
+with no change here.
+
+L2 + L3 was the combination originally wanted and could not have been used regardless. Gamepad
+chords are not key-plus-modifier the way keyboard ones are: they are a fixed list of twenty
+`KEY_GAMEPAD_BOTH_*` codes, and no left-trigger-plus-left-stick code is among them.
+
+### So: chat mode
+
+The arrow keys are the only route on PS5, and they need the catcher, which means arming. For a
+stretch of chatting, arm it and tell it to stay:
 
 ```
-Controls -> PB’s ChatAssistant -> Next Chat Channel
-                               -> Previous Chat Channel
+/pbchat enter          -- arm Enter and the arrow keys
+/pbchat autosafe off   -- keep them armed between messages
+                       -- now: arrows pick the channel, Enter opens the box, repeat
+/pbchat safe           -- done chatting; the controller buttons come back
 ```
 
-and the channel walks with nothing shown, no buttons paused, and no arming. Unlike the arrows,
-these also work while the chat box is open, since a bound button has no text cursor to take.
-
-**Nothing is bound by default.** Bind it yourself under
-
-```
-Options -> Controls -> PB’s ChatAssistant -> Next Chat Channel
-                                          -> Previous Chat Channel
-```
-
-`Bindings.xml` does register on console -- `/pbchat binds` reports the actions at 1/7/1..3 -- so
-the category is there and binding by hand works. Only Next is really needed: the channel list
-wraps, so one button reaches every channel.
-
-An add-on cannot supply the default. `CreateDefaultActionBind` was tried from
-`EVENT_ADD_ON_LOADED` and again at file scope from a file loaded straight after `Bindings.xml`,
-where the actions exist and load is still in progress. `/pbchat binds` reported "nothing bound"
-both times. The call is documented and unmarked but appears nowhere in the game's own UI source,
-and `BindKeyToAction`, which would do it directly, is protected.
-
-L2 + L3 cannot be bound at all, by hand or otherwise. Gamepad chords are not key-plus-modifier
-the way keyboard ones are: they are a fixed list of twenty `KEY_GAMEPAD_BOTH_*` codes, and no
-left-trigger-plus-left-stick code is among them. Binding modifiers are ctrl, alt, shift and
-command only, so a gamepad button can never stand in as one. **L1 + R1** exists and is key 147.
+The game's own channel switches also work from the keyboard once the box is open, with no arming
+and no add-on: type `/say`, `/zone`, `/party`, `/guild1` and so on ahead of the message.
 
 ## The wait
 
