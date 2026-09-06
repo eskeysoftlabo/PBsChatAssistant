@@ -77,27 +77,27 @@ slash command, which is how the game's own channel dropdown is ordered.
 This costs the gamepad nothing extra: the arrows are read by the same catcher that reads Enter,
 which is only up while Enter is armed. `/pbchat channel off` turns it off.
 
-### From the left stick, while the box is open
+### Not from the gamepad at all, on PS5
 
-`/pbchat stick on`. Experimental, and off by default.
+Every route was tried and the platform closes all of them.
 
-Every other gamepad route is closed on PS5 -- no keybinding screen, no way for an add-on to bind
-anything, and a key catcher hears keyboard keys only. `DIRECTIONAL_INPUT` is the exception: a
-plain Lua object an add-on may register with, called once a frame. Nothing is shown, nothing is
-bound, and no button is paused.
+| Route | Result |
+| --- | --- |
+| Bind a controller button by hand | No Controls entry exists under Options on PS5 |
+| Bind one from the add-on | `BindKeyToAction` is refused as **private**, from every calling context |
+| Declare a default bind | `CreateDefaultActionBind` does nothing, from load or from file scope |
+| Read the D-pad via `DIRECTIONAL_INPUT` | Its reader is built out of the private `IsKeyDown`; throws once per frame |
+| Read a stick via `DIRECTIONAL_INPUT` | Not pursued after the D-pad; its reader is `GetGamepadOrKeyboardLeftStickX`, unmarked, so it may yet work |
+| Arrow keys while the input screen is up | The overlay keeps the keyboard; not one key arrives |
 
-**Not the D-pad.** It was the obvious choice and it is unusable: the D-pad reader is built out of
-`IsKeyDown`, which is private, so asking for `ZO_DI_DPAD` throws from add-on code -- once per
-frame, which is far worse than not working at all. The stick readers go through
-`GetGamepadOrKeyboardLeftStickX` instead, which carries no marker.
+`Bindings.xml` still declares **Next Chat Channel** and **Previous Chat Channel**. They register
+fine -- `/pbchat binds` finds them at 1/7/2 and 1/7/3 -- and simply have nowhere to be bound. They
+cost nothing, they are correct on PC, and a console update that adds a keybinding screen would
+make them work with no change here.
 
-Only while the chat entry is open, where the stick is free: the chat system activates an input
-eater that consumes all directional input for the duration, precisely so the player does not walk
-off while typing. Nothing is consumed here either. The threshold is deliberately firm, because a
-channel that walked on a resting thumb would be worse than no feature.
-
-It will likely see nothing while the console's input screen is up, the same way the keyboard sees
-nothing. The window that may work is after the overlay closes and before the message is sent.
+L2 + L3, the combination originally wanted, could not have been used regardless: gamepad chords
+are a fixed list of twenty `KEY_GAMEPAD_BOTH_*` codes and no left-trigger-plus-left-stick code is
+among them.
 
 ### Not from a bound button, on PS5
 
@@ -230,7 +230,6 @@ slash commands still reach all of them.
 | `/pbchat watch on\|off` | The focus watcher |
 | `/pbchat autosafe on\|off` | Drop the catcher once the input screen is up |
 | `/pbchat channel on\|off` | Left/right cycle the outgoing channel while armed |
-| `/pbchat stick on\|off` | Left stick left/right cycles it while the chat box is open |
 | `/pbchat open [s]` | Open the box after N seconds, no key catching involved |
 | `/pbchat enter` | Catcher on -- catches every Enter, costs the buttons, expires in 60 s |
 | `/pbchat safe` | Catcher off -- buttons back |
