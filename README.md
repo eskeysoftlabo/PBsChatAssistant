@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.3.1 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.3.2 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -84,10 +84,14 @@ Controls -> PB’s ChatAssistant -> Next Chat Channel
 and the channel walks with nothing shown, no buttons paused, and no arming. Unlike the arrows,
 these also work while the chat box is open, since a bound button has no text cursor to take.
 
-**Next Chat Channel** ships bound to **L1 + L3**. L2 + L3 cannot be expressed: gamepad chords are
-not key-plus-modifier the way keyboard ones are, but a fixed list of `KEY_GAMEPAD_BOTH_*` codes,
-and no left-trigger-plus-left-stick code exists in it. L1 + L3 is the nearest neighbour that does.
-Only Next gets a default -- the list wraps, so one button reaches every channel.
+**Next Chat Channel** ships bound to **L1 + R1**. Only Next gets a default -- the list wraps, so
+one button reaches every channel.
+
+L2 + L3 cannot be expressed. Gamepad chords are not key-plus-modifier the way keyboard ones are:
+they are a fixed list of twenty `KEY_GAMEPAD_BOTH_*` codes, and no left-trigger-plus-left-stick
+code is among them. Nor can it be reached by hand in the binding screen, because the engine never
+produces a code for that combination -- modifiers there are ctrl, alt, shift and command only,
+and a gamepad button is never one of them.
 
 The default is declared with `CreateDefaultActionBind`, which is documented and unmarked but
 appears nowhere in the game's own UI source, so it is unproven. It is called last in
@@ -261,8 +265,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.3.1
-## Version: 1.3.1
+## Title: PB’s ChatAssistant 1.3.2
+## Version: 1.3.2
 ```
 
 ---

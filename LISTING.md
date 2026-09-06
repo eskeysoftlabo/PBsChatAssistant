@@ -1,4 +1,4 @@
-# Store listing copy — PB's ChatAssistant 1.3.1
+# Store listing copy — PB's ChatAssistant 1.3.2
 
 Text for the ZOS Console AddOn Uploader. Plain text, no markup, so it survives whatever the
 uploader does to it.
@@ -76,8 +76,8 @@ NOTES
 
 - Built and tested for console. On PC, bind a key to Controls -> PB's ChatAssistant -> Open Chat.
 - Requires LibHarvensAddonSettings for the settings panel.
-- Next Chat Channel comes bound to L1 + L3. L2 + L3 is not one of the combinations the game
-  offers; rebind it under Controls if you would rather use another.
+- Next Chat Channel comes bound to L1 + R1. Rebind it under Controls if you would rather use
+  another combination.
 - /pbchat reports the running version and settings.
 
 ---

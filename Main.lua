@@ -119,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.3.1"
+local VERSION = "1.3.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1107,15 +1107,16 @@ local function OnAddOnLoaded(_, name)
 	-- it after everything else means that if it does throw, the add-on is already built and
 	-- keeps working; only the default bind is lost, and the actions can still be bound by hand.
 	--
-	-- L2 + L3 was asked for and cannot be expressed. Gamepad chords are not key-plus-modifier
-	-- the way keyboard ones are: they are a fixed list of KEY_GAMEPAD_BOTH_* codes, and no
-	-- left-trigger-plus-left-stick code exists in it. L1 + L3 is the nearest neighbour that does.
+	-- L1 + R1. L2 + L3 was asked for first and cannot be expressed: gamepad chords are not
+	-- key-plus-modifier the way keyboard ones are, but a fixed list of twenty KEY_GAMEPAD_BOTH_*
+	-- codes, and no left-trigger-plus-left-stick code is among them. The binding screen cannot
+	-- reach it either, because the engine never produces a code for that combination.
 	--
 	-- Only NEXT is given a default. The channel list wraps, so one button reaches every channel,
 	-- and spending a second chord on going backwards through a handful of entries is a poor
 	-- trade for a combination the player might want elsewhere.
-	if type(CreateDefaultActionBind) == "function" and KEY_GAMEPAD_BOTH_LEFT_SHOULDER_LEFT_STICK then
-		CreateDefaultActionBind("PBSCHATASSISTANT_CHANNEL_NEXT", KEY_GAMEPAD_BOTH_LEFT_SHOULDER_LEFT_STICK)
+	if type(CreateDefaultActionBind) == "function" and KEY_GAMEPAD_BOTH_SHOULDERS then
+		CreateDefaultActionBind("PBSCHATASSISTANT_CHANNEL_NEXT", KEY_GAMEPAD_BOTH_SHOULDERS)
 	end
 end
 
