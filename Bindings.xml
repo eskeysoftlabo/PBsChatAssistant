@@ -22,4 +22,17 @@
 			</Action>
 		</Category>
 	</Layer>
+	<!-- Observe L3 and L2 separately; compose the chord in Lua on the HUD. -->
+	<Layer name="PBsChatAssistantHUDChannelLayer" allowFallthrough="true">
+		<Category>
+			<Action name="PBSCHATASSISTANT_HUD_CHANNEL_L3" inheritsBindFrom="UI_SHORTCUT_LEFT_STICK" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>return PBS_CHAT_ASSISTANT_HUD_CHANNEL:ButtonDown("L3")</Down>
+				<Up>return PBS_CHAT_ASSISTANT_HUD_CHANNEL:ButtonUp("L3")</Up>
+			</Action>
+			<Action name="PBSCHATASSISTANT_HUD_CHANNEL_L2" inheritsBindFrom="UI_SHORTCUT_LEFT_TRIGGER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>return PBS_CHAT_ASSISTANT_HUD_CHANNEL:ButtonDown("L2")</Down>
+				<Up>return PBS_CHAT_ASSISTANT_HUD_CHANNEL:ButtonUp("L2")</Up>
+			</Action>
+		</Category>
+	</Layer>
 </Bindings>

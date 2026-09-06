@@ -125,7 +125,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.7.2"
+local VERSION = "1.8.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -374,7 +374,7 @@ end
 --
 -- No guard on the chat box being closed here. That guard belongs to the arrow keys alone, where
 -- it stops an open box losing its text cursor; a bound button has nothing to take.
-function addon:CycleChannel(step)
+function addon:CycleChannel(step, suppressAlert)
 	if not self.sv or not self.sv.enabled then
 		return
 	end
@@ -403,7 +403,7 @@ function addon:CycleChannel(step)
 
 	-- An alert rather than a chat line: the box is closed, so there is nothing on screen saying
 	-- which channel is selected, and a line per key press would bury the conversation.
-	if type(ZO_Alert) == "function" then
+	if not suppressAlert and type(ZO_Alert) == "function" then
 		ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, target.name)
 	end
 end
@@ -465,9 +465,7 @@ local function IsCatcherShown()
 end
 
 function addon:Log(formatString, ...)
-	if self.sv and self.sv.log then
-		Print(formatString, ...)
-	end
+	-- Automatic debug tracing is disabled in the release build, including old saved settings.
 end
 
 function addon:ApplyCatcher()
@@ -970,8 +968,8 @@ function addon:InitSlashCommand()
 		elseif command == "probe" then
 			self:StartProbe(argument ~= "" and argument or "default")
 		elseif command == "log" then
-			self.sv.log = (argument ~= "off")
-			Print("log %s", self.sv.log and "on" or "off")
+			self.sv.log = false
+			Print("debug logging is disabled in this release")
 		elseif command == "follow" then
 			self.sv.followInput = (argument ~= "off")
 			self:ApplyCatcher()
