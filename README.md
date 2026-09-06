@@ -213,7 +213,8 @@ That second one is **not solved**. See Limitations.
 ## Settings panel
 
 **Settings -> Add-Ons -> PB’s ChatAssistant** (LibHarvensAddonSettings) carries the wait, and
-nothing else.
+nothing else. The menu entry carries the version, so which build is installed can be read without
+running anything.
 
 It is the only setting a player has reason to reach for, because the right value is a property of
 the machine rather than of the add-on, and getting it wrong is the one failure that looks like the
@@ -320,7 +321,7 @@ back.
 Console builds go through **Bethesda.net**, not ESOUI -- use the ZOS Console AddOn Uploader. The
 name shown in the in-game browser comes from the uploader entry, not from `## Title`. To cut a
 version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION` in `Main.lua`,
-which is what `/pbchat` reports:
+which is what `/pbchat` reports and what the settings panel lists the add-on by:
 
 ```
 ## Title: PB’s ChatAssistant 1.4.0

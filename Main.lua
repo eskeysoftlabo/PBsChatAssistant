@@ -124,7 +124,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.7.0"
+local VERSION = "1.7.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1121,7 +1121,10 @@ local function OnAddOnLoaded(_, name)
 	addon:ApplyCatcher()
 	addon:ApplyWatch()
 
-	addon.title = DISPLAY_NAME
+	-- The version rides in the title, because that is what the settings panel lists add-ons by:
+	-- settings.version below only fills a field inside the panel, which is no help when the
+	-- question is which build is installed and the menu is all that is on screen.
+	addon.title = string.format("%s %s", DISPLAY_NAME, VERSION)
 	addon.author = AUTHOR
 	addon.version = VERSION
 	if addon.InitSettings then
