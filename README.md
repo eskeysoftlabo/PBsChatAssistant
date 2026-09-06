@@ -61,8 +61,19 @@ party, guild -- announced as an alert. Pick the channel on the HUD, then press E
 the choice survives the open, because the chat system only resets the channel when there is not
 one set already.
 
-Only while the chat box is **closed**. Inside an open box the arrow keys move the text cursor,
-and taking them would be a poor trade for a channel switch.
+While the chat box is **closed**, where the arrow keys have nothing else to do. Inside an open box
+they move the text cursor, and taking that for a channel switch would be a poor trade.
+
+`/pbchat imekeys on` adds a second window: while the console's **input screen** is up. The text
+cursor there belongs to the overlay rather than to the game's edit control, so there is nothing to
+take, and it is precisely when the channel worth sending to is worth choosing. The catcher is held
+up for exactly that long -- the one stretch where it costs nothing, since the player is typing
+into a system overlay with the game behind it and paused gamepad buttons are no loss.
+
+It ships **off**, because two things could stop it working and neither is known: the overlay may
+keep the keyboard to itself and never let a key reach the game, and a catcher appearing under a
+screen that is already up may disturb it, the way a catcher already up stops one appearing at all.
+`/pbchat log on` reports whether keys arrive.
 
 The list is the channels available to you right now -- the same requirement test the chat system
 itself applies, so no cycling into party chat when you are not in a group -- ordered by their
@@ -202,6 +213,7 @@ slash commands still reach all of them.
 | `/pbchat watch on\|off` | The focus watcher |
 | `/pbchat autosafe on\|off` | Drop the catcher once the input screen is up |
 | `/pbchat channel on\|off` | Left/right cycle the outgoing channel while armed |
+| `/pbchat imekeys on\|off` | Also allow that while the console's input screen is up |
 | `/pbchat open [s]` | Open the box after N seconds, no key catching involved |
 | `/pbchat enter` | Catcher on -- catches every Enter, costs the buttons, expires in 60 s |
 | `/pbchat safe` | Catcher off -- buttons back |

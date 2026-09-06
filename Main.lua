@@ -80,6 +80,8 @@ local DEFAULTS = {
 	watch = true,
 	autoSafe = true,
 	channelKeys = true,
+	-- Experimental, off. See the input-screen hold in OnWatchTick.
+	imeKeys = false,
 	followInput = false,
 	idleSeconds = 15,
 	triggerOnKeyboard = false,
@@ -119,7 +121,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.4.2"
+local VERSION = "1.5.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -474,6 +476,17 @@ function addon:ApplyCatcher()
 		return
 	end
 
+	-- The input-screen hold outranks everything below it, including the stand-down that runs
+	-- across an open box. That stand-down exists so the catcher cannot keep the input screen from
+	-- appearing; once the screen is up there is nothing left to keep away.
+	if imeHold then
+		local held = GetCatcherControl("default")
+		if held then
+			held:SetHidden(false)
+		end
+		return
+	end
+
 	if catcherSuspended then
 		return
 	end
@@ -579,8 +592,11 @@ function addon:OnCatcherKey(control, key)
 		return
 	end
 
+	-- Arrows walk the channel while the box is closed, where they have nothing else to do, and
+	-- while the console's input screen is up, where the text cursor they would otherwise move
+	-- belongs to the overlay rather than to the game's edit control.
 	local step = CHANNEL_KEYS[key]
-	if step and self.sv.channelKeys and not IsTextEntryOpen() then
+	if step and self.sv.channelKeys and (not IsTextEntryOpen() or IsInputScreenUp()) then
 		self:CycleChannel(step)
 	end
 end
@@ -607,6 +623,9 @@ end
 -- longer a case.
 local watchArmed = false
 local armHandle = 0
+
+-- True while the catcher is being held up for the duration of the console's input screen.
+local imeHold = false
 
 local function GetEditControl()
 	local chat = GetChatSystem()
@@ -666,7 +685,34 @@ function addon:OnWatchTick()
 	--
 	-- captureMode is a saved setting, so this persists: a session starts with the buttons
 	-- working, and /pbchat enter is how Enter is armed for the next stretch of typing.
-	if self.sv.autoSafe and self.sv.captureMode ~= "off" and IsInputScreenUp() then
+	local screenUp = IsInputScreenUp()
+
+	-- Holding the catcher up for exactly as long as the console's input screen is on screen.
+	--
+	-- That window is the one place where the catcher costs nothing. The player is typing into a
+	-- system overlay with the game behind it, so gamepad buttons being paused is no loss, and it
+	-- is precisely when the channel to send to is worth changing.
+	--
+	-- Two things could stop it working, and neither is known: the overlay may take the keyboard
+	-- for itself and never let a key reach the game, and a catcher appearing under a screen that
+	-- is already up may disturb it the way one stops it appearing in the first place. Hence off
+	-- by default. /pbchat log on reports whether keys arrive.
+	if self.sv.imeKeys then
+		if screenUp and not imeHold then
+			imeHold = true
+			self:Log("input screen up -- holding the catcher for the arrow keys")
+			self:ApplyCatcher()
+		elseif imeHold and not screenUp then
+			imeHold = false
+			if self.sv.autoSafe then
+				self.sv.captureMode = "off"
+			end
+			self:Log("input screen gone -- catcher released")
+			self:ApplyCatcher()
+		end
+	elseif self.sv.autoSafe and self.sv.captureMode ~= "off" and screenUp then
+		-- The catcher's entire job is the one key press that starts a chat. Once the input screen
+		-- is up that press has been had, and everything it still costs is being paid for nothing.
 		self.sv.captureMode = "off"
 		self:ApplyCatcher()
 		self:Log("input screen up -- catcher down, gamepad back")
@@ -1028,6 +1074,13 @@ function addon:InitSlashCommand()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
 		elseif command == "binds" then
 			self:PrintBinds()
+		elseif command == "imekeys" then
+			self.sv.imeKeys = (argument ~= "off")
+			if not self.sv.imeKeys and imeHold then
+				imeHold = false
+				self:ApplyCatcher()
+			end
+			Print("arrow keys during the input screen %s", self.sv.imeKeys and "on" or "off")
 		elseif command == "channel" then
 			self.sv.channelKeys = (argument ~= "off")
 			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
