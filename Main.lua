@@ -119,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.3.5"
+local VERSION = "1.4.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -570,6 +570,13 @@ function addon:OnCatcherKey(control, key)
 	self:Log("key %d (%s), entry %s, input %s", key, tostring(GetKeyName(key)),
 		tostring(IsTextEntryOpen()), IsGamepadInput() and "gamepad" or "keyboard")
 
+	-- A pending bind rides this key press for its trusted callstack, and must run before
+	-- anything else can decide to return early.
+	if pendingBind then
+		BindPendingAction()
+		return
+	end
+
 	-- Any key means the player is still at the keyboard, so the catcher stays up and the idle
 	-- countdown restarts. Only Enter opens the box.
 	self:TouchKeyboardActivity()
@@ -607,6 +614,10 @@ end
 -- longer a case.
 local watchArmed = false
 local armHandle = 0
+
+-- Set by /pbchat bind, consumed by the next key press. See BindPendingAction.
+local pendingBind = nil
+local pendingBindHandle = 0
 
 local function GetEditControl()
 	local chat = GetChatSystem()
@@ -932,6 +943,75 @@ function addon:PrintBinds()
 	end
 end
 
+-- Binding an action from inside a key press.
+--
+-- BindKeyToAction is *protected*, and protected is not private. A private function cannot be
+-- called by add-on code at any time -- that is what stopped StartChatInput being used. A
+-- protected one can, provided the callstack still traces back to a hardware input event, which
+-- is exactly what the catcher's OnKeyDown is. The game binds this way itself, straight out of a
+-- keybind callback, with no separate save step.
+--
+-- The key that is pressed is not the key being bound. It is only there to make the callstack
+-- trusted; the chord being assigned is a gamepad code that never reaches add-on Lua at all.
+--
+-- This exists because PS5 has no keybinding screen. The actions register -- 1/7/1..3 -- and
+-- there is nowhere to bind them, and CreateDefaultActionBind does nothing from an add-on. If a
+-- protected call from a real key press works, that is the last route to a controller button.
+local function BindPendingAction()
+	local request = pendingBind
+	pendingBind = nil
+
+	if not request then
+		return
+	end
+
+	if type(GetActionIndicesFromName) ~= "function" or type(BindKeyToAction) ~= "function" then
+		Print("no binding API on this client")
+		return
+	end
+
+	local layerIndex, categoryIndex, actionIndex = GetActionIndicesFromName(request.action)
+	if not layerIndex then
+		Print("%s is not registered", request.action)
+		return
+	end
+
+	if request.unbind then
+		if type(UnbindKeyFromAction) ~= "function" then
+			Print("no unbind on this client")
+			return
+		end
+		UnbindKeyFromAction(layerIndex, categoryIndex, actionIndex, 1)
+		Print("unbound %s -- check with /pbchat binds", request.label)
+		return
+	end
+
+	BindKeyToAction(layerIndex, categoryIndex, actionIndex, 1, request.key)
+	Print("bound %s to key %d (%s) -- check with /pbchat binds", request.label, request.key,
+		tostring(GetKeyName(request.key)))
+end
+
+function addon:RequestBind(label, actionName, key, unbind)
+	pendingBind = { label = label, action = actionName, key = key, unbind = unbind }
+	pendingBindHandle = pendingBindHandle + 1
+	local handle = pendingBindHandle
+
+	if IsCatcherShown() then
+		Print("press any keyboard key now to %s %s", unbind and "unbind" or "bind", label)
+	else
+		-- Without a catcher there is no key press to ride, and no trusted callstack.
+		Print("run /pbchat enter first, then press a key")
+	end
+
+	-- A request left lying around would fire on some unrelated key press much later.
+	zo_callLater(function()
+		if handle == pendingBindHandle and pendingBind then
+			pendingBind = nil
+			Print("bind request expired")
+		end
+	end, 30000)
+end
+
 function addon:InitSlashCommand()
 	SLASH_COMMANDS["/pbchat"] = function(args)
 		args = zo_strtrim(args or "")
@@ -1018,6 +1098,22 @@ function addon:InitSlashCommand()
 			self.sv.captureMode = "off"
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
+		elseif command == "bind" or command == "unbind" then
+			local unbind = (command == "unbind")
+			local which, keyText = argument:match("^(%S*)%s*(.*)$")
+			local key = tonumber(keyText)
+
+			if which == "next" then
+				self:RequestBind("Next Chat Channel", "PBSCHATASSISTANT_CHANNEL_NEXT",
+					key or KEY_GAMEPAD_BOTH_SHOULDERS, unbind)
+			elseif which == "prev" then
+				self:RequestBind("Previous Chat Channel", "PBSCHATASSISTANT_CHANNEL_PREV",
+					key or KEY_GAMEPAD_BOTH_LEFT_SHOULDER_LEFT_STICK, unbind)
+			elseif which == "chat" then
+				self:RequestBind("Open Chat", "PBSCHATASSISTANT_START_CHAT", key, unbind)
+			else
+				Print("%s next | prev | chat [keycode]", command)
+			end
 		elseif command == "binds" then
 			self:PrintBinds()
 		elseif command == "channel" then

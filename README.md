@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.3.5 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.4.0 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -78,13 +78,29 @@ but gamepad buttons do, so a button would have walked the channel with nothing s
 armed and no buttons paused. `Bindings.xml` declares **Next Chat Channel** and **Previous Chat
 Channel** for it, and they register -- `/pbchat binds` finds them at 1/7/2 and 1/7/3.
 
-**There is nowhere on PS5 to bind them.** The console has no Controls entry under Options, so the
+**There is nowhere on PS5 to bind them by hand.** The console has no Controls entry under Options, so the
 keybinding screen the actions would appear in does not exist. Nor can the add-on bind them
 itself: `CreateDefaultActionBind` was tried from `EVENT_ADD_ON_LOADED` and again at file scope
 from a file loaded straight after `Bindings.xml`, and `/pbchat binds` reported "nothing bound"
 both times; `BindKeyToAction`, which would do it directly, is protected.
 
-So the actions register and stay forever out of reach. They are kept because they cost nothing
+`/pbchat bind next` is the way in. `BindKeyToAction` is *protected*, and protected is not
+private: a private function cannot be called by add-on code at any time, while a protected one
+can, provided the callstack still traces back to a hardware input event. The catcher's
+`OnKeyDown` is exactly that, and the game binds this way itself, straight out of a keybind
+callback with no separate save step.
+
+```
+/pbchat enter        -- arm the catcher, so there is a key press to ride
+/pbchat bind next    -- then press any keyboard key
+/pbchat binds        -- confirm
+```
+
+The key pressed is not the key being bound; it is only there to make the callstack trusted. The
+chord being assigned is a gamepad code that never reaches add-on Lua at all. `/pbchat bind next
+147` names a code explicitly, and `/pbchat unbind next` undoes it.
+
+The actions are also kept for their own sake. They are kept because they cost nothing
 and are correct on PC, and because a console update that adds the screen would make them work
 with no change here.
 
@@ -189,6 +205,8 @@ slash commands still reach all of them.
 | `/pbchat probe [tier]` | 15 s: report what keys reach a tier, keyboard and gamepad apart |
 | `/pbchat trial [tier]` | 20 s with a live catcher, then off by itself |
 | `/pbchat capture off\|default\|high\|medium\|low` | Which tier catches Enter |
+| `/pbchat bind next\|prev\|chat [code]` | Bind an action, from inside the next key press |
+| `/pbchat unbind next\|prev\|chat` | Undo one |
 | `/pbchat binds` | Report whether the bindable actions registered, and what is bound |
 | `/pbchat unstick` | Force the chat entry closed, giving the controller back |
 | `/pbchat on` / `off` | Master switch |
@@ -275,8 +293,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.3.5
-## Version: 1.3.5
+## Title: PB’s ChatAssistant 1.4.0
+## Version: 1.4.0
 ```
 
 ---
