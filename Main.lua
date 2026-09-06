@@ -113,7 +113,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -355,7 +355,18 @@ local function GetCyclableChannels()
 	return channels
 end
 
+-- Reached two ways: the arrow keys, which need the catcher up and so need Enter armed, and the
+-- bindable actions in Bindings.xml, which do not. Keyboard keys never reach the binding system
+-- on console, but gamepad buttons do, so a controller button bound to one of those walks the
+-- channel with nothing shown and no buttons paused.
+--
+-- No guard on the chat box being closed here. That guard belongs to the arrow keys alone, where
+-- it stops an open box losing its text cursor; a bound button has nothing to take.
 function addon:CycleChannel(step)
+	if not self.sv or not self.sv.enabled then
+		return
+	end
+
 	local chat = GetChatSystem()
 	if not chat or type(chat.SetChannel) ~= "function" then
 		return

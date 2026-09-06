@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.1.0 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.2.0 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -70,6 +70,19 @@ slash command, which is how the game's own channel dropdown is ordered.
 
 This costs the gamepad nothing extra: the arrows are read by the same catcher that reads Enter,
 which is only up while Enter is armed. `/pbchat channel off` turns it off.
+
+### From the controller, with nothing armed
+
+The arrows need the catcher, and the catcher needs Enter armed. A **controller button** does not:
+keyboard keys never reach the binding system on console, but gamepad buttons do. Bind either of
+
+```
+Controls -> PB’s ChatAssistant -> Next Chat Channel
+                               -> Previous Chat Channel
+```
+
+and the channel walks with nothing shown, no buttons paused, and no arming. Unlike the arrows,
+these also work while the chat box is open, since a bound button has no text cursor to take.
 
 ## The wait
 
@@ -223,8 +236,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.1.0
-## Version: 1.1.0
+## Title: PB’s ChatAssistant 1.2.0
+## Version: 1.2.0
 ```
 
 ---

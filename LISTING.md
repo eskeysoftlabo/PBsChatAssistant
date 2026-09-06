@@ -1,4 +1,4 @@
-# Store listing copy — PB's ChatAssistant 1.1.0
+# Store listing copy — PB's ChatAssistant 1.2.0
 
 Text for the ZOS Console AddOn Uploader. Plain text, no markup, so it survives whatever the
 uploader does to it.
@@ -30,8 +30,9 @@ WHAT IT DOES
 - Open the chat window however you like — the controller combo included — and the input screen
   comes up for it anyway. That part works on its own, all the time, with nothing to arm.
 - Type Japanese the way you would anywhere else on the console, and send.
-- With Enter armed, the left and right arrow keys switch which channel your next message goes to
-  -- say, zone, party, guild -- from the keyboard as well.
+- Switch which channel your next message goes to -- say, zone, party, guild -- without opening
+  anything. From the keyboard with the left and right arrow keys while Enter is armed, or from a
+  controller button you bind under Controls -> PB's ChatAssistant, which needs no arming at all.
 
 ABOUT THE CONTROLLER
 
