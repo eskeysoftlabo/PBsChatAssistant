@@ -80,8 +80,11 @@ local DEFAULTS = {
 	watch = true,
 	autoSafe = true,
 	channelKeys = true,
-	-- Experimental, off. See the D-pad reader.
-	dpadChannel = false,
+	-- Experimental, off. See the stick reader.
+	--
+	-- A new key on purpose: 1.6.0 stored dpadChannel, and the D-pad read it enabled threw every
+	-- single frame. A stored "true" must not carry over into this and start that again.
+	stickChannel = false,
 	followInput = false,
 	idleSeconds = 15,
 	triggerOnKeyboard = false,
@@ -121,7 +124,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.6.0"
+local VERSION = "1.6.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -733,88 +736,89 @@ function addon:ApplyWatch()
 end
 
 ----------------------------------------------------------------------------------------------
--- The D-pad reader
+-- The stick reader
 ----------------------------------------------------------------------------------------------
 
 -- Gamepad input, without a keybind.
 --
 -- Every other gamepad route is closed on PS5: there is no keybinding screen, an add-on cannot
 -- bind anything itself, and a key catcher receives keyboard keys only. DIRECTIONAL_INPUT is the
--- exception. It is a plain Lua object, add-ons may register with it, and ZO_DI_DPAD is the D-pad.
--- Nothing is shown, nothing is bound, and no button is paused.
+-- exception -- a plain Lua object add-ons may register with, called once a frame.
 --
--- Only while the chat entry is open, where the D-pad is free: the chat system activates an input
+-- The D-pad was the obvious choice and is not usable. Its reader is built out of IsKeyDown, which
+-- is private, so asking for ZO_DI_DPAD throws from add-on code -- every frame, which is far worse
+-- than not working. The stick readers go through GetGamepadOrKeyboardLeftStickX instead, which
+-- carries no marker, so that is what this reads.
+--
+-- Only while the chat entry is open, where the stick is free: the chat system activates an input
 -- eater that consumes all directional input for the duration, precisely so the player does not
--- walk off while typing. Reading it there takes nothing from anything.
---
--- Read raw and never consumed. GetX() returns zero for a device someone else has consumed, and
--- the eater consumes everything, so the raw per-device read is the one that answers. Consuming it
--- ourselves would be taking input the game expects to swallow.
+-- walk off while typing. Nothing is consumed here either, so nothing else changes.
 --
 -- Unproven: while the console's input screen is up it will almost certainly see nothing, the same
 -- way the keyboard sees nothing. The window that may work is after the overlay closes and before
 -- the message is sent.
-local dpadObject = nil
-local lastDpadX = 0
+local stickObject = nil
+local lastStickX = 0
 
-local function ReadDpadX()
-	if type(DIRECTIONAL_INPUT) ~= "table" or not ZO_DI_DPAD then
+-- Firm, because the stick is analogue and the player may rest a thumb on it. A channel that
+-- walked on a drifting stick would be worse than no feature.
+local STICK_THRESHOLD = 0.8
+
+local function ReadStickX()
+	if type(GetGamepadOrKeyboardLeftStickX) ~= "function" then
 		return 0
 	end
-	if type(DIRECTIONAL_INPUT.GetXFromInputDevice) == "function" then
-		return DIRECTIONAL_INPUT:GetXFromInputDevice(ZO_DI_DPAD) or 0
-	end
-	if type(DIRECTIONAL_INPUT.GetX) == "function" then
-		return DIRECTIONAL_INPUT:GetX(ZO_DI_DPAD) or 0
-	end
-	return 0
+	return GetGamepadOrKeyboardLeftStickX(true) or 0
 end
 
-function addon:ApplyDpad()
+function addon:ApplyStick()
 	if type(DIRECTIONAL_INPUT) ~= "table" then
 		return
 	end
 
-	local wanted = self.sv.enabled and self.sv.dpadChannel
+	local wanted = self.sv.enabled and self.sv.stickChannel
 
-	if wanted and not dpadObject then
-		-- Any control will do; DIRECTIONAL_INPUT only sorts by visual order and never checks
-		-- whether it is shown. The HIGH-tier catcher sorts above everything, so this reads before
-		-- the chat system's eater gets its turn.
+	if wanted and not stickObject then
 		local control = _G[CATCHER_CONTROL_NAMES.high] or _G[CATCHER_CONTROL_NAMES.default]
 		if not control then
 			return
 		end
 
-		dpadObject = {
+		-- Read once here, before registering, and let it throw if it is going to. A restricted
+		-- call cannot be caught, so the only defence is to find out at a moment when the damage
+		-- is one error rather than one per frame: if this line throws, the registration below
+		-- never happens and nothing is left running.
+		ReadStickX()
+
+		stickObject = {
 			UpdateDirectionalInput = function()
-				local x = ReadDpadX()
+				local x = ReadStickX()
 				local direction = 0
-				if x > 0.5 then
+				if x > STICK_THRESHOLD then
 					direction = 1
-				elseif x < -0.5 then
+				elseif x < -STICK_THRESHOLD then
 					direction = -1
 				end
 
-				-- Edge triggered. Held, the D-pad reads the same every frame, and a channel that
+				-- Edge triggered. Held, the stick reads the same every frame, and a channel that
 				-- walked once per frame would be useless.
-				if direction ~= 0 and direction ~= lastDpadX then
+				if direction ~= 0 and direction ~= lastStickX then
 					if IsTextEntryOpen() then
-						self:Log("dpad %d", direction)
+						self:Log("stick %d", direction)
 						self:CycleChannel(direction)
 					end
 				end
-				lastDpadX = direction
+				lastStickX = direction
 			end,
 		}
 
-		DIRECTIONAL_INPUT:Activate(dpadObject, control)
-		self:Log("dpad reader on")
-	elseif not wanted and dpadObject then
-		DIRECTIONAL_INPUT:Deactivate(dpadObject)
-		dpadObject = nil
-		lastDpadX = 0
-		self:Log("dpad reader off")
+		DIRECTIONAL_INPUT:Activate(stickObject, control)
+		self:Log("stick reader on")
+	elseif not wanted and stickObject then
+		DIRECTIONAL_INPUT:Deactivate(stickObject)
+		stickObject = nil
+		lastStickX = 0
+		self:Log("stick reader off")
 	end
 end
 
@@ -975,7 +979,7 @@ function addon:PrintStatus()
 	Print("input type: %s, follow %s, trigger %s", IsGamepadInput() and "gamepad" or "keyboard",
 		tostring(self.sv.followInput), tostring(self.sv.triggerOnKeyboard))
 	Print("catcher shown: %s, keyboard active: %s", tostring(IsCatcherShown()), tostring(keyboardActive))
-	Print("dpad channel %s", tostring(self.sv.dpadChannel))
+	Print("stick channel %s", tostring(self.sv.stickChannel))
 	Print("watch %s, auto safe %s, edit focus %s, input screen %s", tostring(self.sv.watch),
 		tostring(self.sv.autoSafe), tostring(HasEditFocus()), tostring(IsInputScreenUp()))
 end
@@ -1128,10 +1132,10 @@ function addon:InitSlashCommand()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
 		elseif command == "binds" then
 			self:PrintBinds()
-		elseif command == "dpad" then
-			self.sv.dpadChannel = (argument ~= "off")
-			self:ApplyDpad()
-			Print("d-pad channel switching %s", self.sv.dpadChannel and "on" or "off")
+		elseif command == "stick" then
+			self.sv.stickChannel = (argument ~= "off")
+			self:ApplyStick()
+			Print("left-stick channel switching %s", self.sv.stickChannel and "on" or "off")
 		elseif command == "channel" then
 			self.sv.channelKeys = (argument ~= "off")
 			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
@@ -1208,7 +1212,7 @@ local function OnAddOnLoaded(_, name)
 	addon:InitSlashCommand()
 	addon:ApplyCatcher()
 	addon:ApplyWatch()
-	addon:ApplyDpad()
+	addon:ApplyStick()
 
 	addon.title = DISPLAY_NAME
 	addon.author = AUTHOR

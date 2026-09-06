@@ -77,24 +77,27 @@ slash command, which is how the game's own channel dropdown is ordered.
 This costs the gamepad nothing extra: the arrows are read by the same catcher that reads Enter,
 which is only up while Enter is armed. `/pbchat channel off` turns it off.
 
-### From the D-pad, while the box is open
+### From the left stick, while the box is open
 
-`/pbchat dpad on`. Experimental, and off by default.
+`/pbchat stick on`. Experimental, and off by default.
 
 Every other gamepad route is closed on PS5 -- no keybinding screen, no way for an add-on to bind
-anything, and a key catcher hears keyboard keys only. `DIRECTIONAL_INPUT` is the exception: it is
-a plain Lua object an add-on may register with, and `ZO_DI_DPAD` is the D-pad. Nothing is shown,
-nothing is bound, and no button is paused.
+anything, and a key catcher hears keyboard keys only. `DIRECTIONAL_INPUT` is the exception: a
+plain Lua object an add-on may register with, called once a frame. Nothing is shown, nothing is
+bound, and no button is paused.
 
-Only while the chat entry is open, where the D-pad is free -- the chat system activates an input
+**Not the D-pad.** It was the obvious choice and it is unusable: the D-pad reader is built out of
+`IsKeyDown`, which is private, so asking for `ZO_DI_DPAD` throws from add-on code -- once per
+frame, which is far worse than not working at all. The stick readers go through
+`GetGamepadOrKeyboardLeftStickX` instead, which carries no marker.
+
+Only while the chat entry is open, where the stick is free: the chat system activates an input
 eater that consumes all directional input for the duration, precisely so the player does not walk
-off while typing. Reading it there takes nothing from anything, and it is never consumed: `GetX()`
-returns zero for a device someone else has consumed, so the raw per-device read is the one that
-answers.
+off while typing. Nothing is consumed here either. The threshold is deliberately firm, because a
+channel that walked on a resting thumb would be worse than no feature.
 
-It will almost certainly see nothing while the console's input screen is up, the same way the
-keyboard sees nothing. The window that may work is after the overlay closes and before the message
-is sent.
+It will likely see nothing while the console's input screen is up, the same way the keyboard sees
+nothing. The window that may work is after the overlay closes and before the message is sent.
 
 ### Not from a bound button, on PS5
 
@@ -227,7 +230,7 @@ slash commands still reach all of them.
 | `/pbchat watch on\|off` | The focus watcher |
 | `/pbchat autosafe on\|off` | Drop the catcher once the input screen is up |
 | `/pbchat channel on\|off` | Left/right cycle the outgoing channel while armed |
-| `/pbchat dpad on\|off` | D-pad left/right cycles it while the chat box is open |
+| `/pbchat stick on\|off` | Left stick left/right cycles it while the chat box is open |
 | `/pbchat open [s]` | Open the box after N seconds, no key catching involved |
 | `/pbchat enter` | Catcher on -- catches every Enter, costs the buttons, expires in 60 s |
 | `/pbchat safe` | Catcher off -- buttons back |
