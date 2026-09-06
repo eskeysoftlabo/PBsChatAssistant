@@ -118,11 +118,12 @@ jobs. Analog triggers do not report Up reliably, so `GetGamepadLeftTriggerMagnit
 clear the latch.
 
 A third assumption was made and corrected the same way in 1.8.1: that the HUD loop could be slowed
-from 10ms to 100ms because nothing in it needs a frame. A quick tap of L2 fits entirely between two
-samples that far apart, so the press is never seen and the latch it should have cleared stays set,
-swallowing the next chord. Measured in play. The per-tick cost that prompted the change was real
-and was fixed where it actually lived: the label is built only when the channel changes, and the
-trigger is read only when a press is outstanding.
+from 10ms to 100ms because nothing in it needs a frame. The interval is what decides how long the
+chord stays latched after the trigger is released, so at 100ms a second chord arriving sooner than
+that is swallowed — which is exactly how fast someone walks through channels. Reported from play,
+and settled at 50ms. The per-tick cost that prompted the change was real and was fixed where it
+actually lived: the label is built only when the channel changes, and the trigger is read only
+while a press is outstanding.
 
 **The lesson worth keeping:** every entry above is a measurement, and measurements are sound. The
 sentence that was wrong was the one that generalised from them without being measured itself.

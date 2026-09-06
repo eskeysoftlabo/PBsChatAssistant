@@ -2,18 +2,19 @@
 local NAME = "PBsChatAssistantHUDChannel"
 local HOST_ADDON = "PBsChatAssistant"
 local LAYER = "PBsChatAssistantHUDChannelLayer"
--- 10ms, back from the 100ms that seemed defensible and was not.
+-- The interval decides how long the chord stays latched after the trigger is released, and
+-- therefore how fast the channel can be walked. ButtonDown samples the trigger itself, so a press
+-- is never missed by the loop; what the loop is for is noticing the release, and until it does,
+-- the next chord is swallowed.
 --
--- The reasoning for slowing it down was that nothing here needs a frame. The reasoning was wrong,
--- and the way it was wrong is worth keeping: a quick tap of L2 fits entirely between two samples
--- a tenth of a second apart, so the press is never seen, triggerWasDown never gets set, the
--- release that would clear the latch is never recognised, and the NEXT chord is ignored. Measured
--- in play, not derived.
+-- 100ms was tried and reported as dropping presses in play -- a tenth of a second between one
+-- chord and the next is well within how fast someone cycles through channels. 50ms halves that
+-- wait.
 --
--- The cost that prompted the change is dealt with where it actually was -- the label is built only
--- when the channel changes, and the trigger is only read when there is a press outstanding to
--- release -- so most ticks now do almost nothing regardless of how often they run.
-local UPDATE_INTERVAL_MS = 10
+-- The cost that prompted slowing it down at all is dealt with where it actually was: the label is
+-- built only when the channel changes, and the trigger is read only while a press is outstanding.
+-- Most ticks do almost nothing however often they run.
+local UPDATE_INTERVAL_MS = 50
 local channel = { buttons = {} }
 PBS_CHAT_ASSISTANT_HUD_CHANNEL = channel
 
