@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.3.2 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.3.3 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -180,6 +180,7 @@ slash commands still reach all of them.
 | `/pbchat probe [tier]` | 15 s: report what keys reach a tier, keyboard and gamepad apart |
 | `/pbchat trial [tier]` | 20 s with a live catcher, then off by itself |
 | `/pbchat capture off\|default\|high\|medium\|low` | Which tier catches Enter |
+| `/pbchat binds` | Report whether the bindable actions registered, and what is bound |
 | `/pbchat unstick` | Force the chat entry closed, giving the controller back |
 | `/pbchat on` / `off` | Master switch |
 
@@ -265,8 +266,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.3.2
-## Version: 1.3.2
+## Title: PB’s ChatAssistant 1.3.3
+## Version: 1.3.3
 ```
 
 ---

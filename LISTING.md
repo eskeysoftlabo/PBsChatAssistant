@@ -1,4 +1,4 @@
-# Store listing copy — PB's ChatAssistant 1.3.2
+# Store listing copy — PB's ChatAssistant 1.3.3
 
 Text for the ZOS Console AddOn Uploader. Plain text, no markup, so it survives whatever the
 uploader does to it.

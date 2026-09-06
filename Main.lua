@@ -119,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.3.2"
+local VERSION = "1.3.3"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -880,6 +880,58 @@ function addon:PrintStatus()
 		tostring(self.sv.autoSafe), tostring(HasEditFocus()), tostring(IsInputScreenUp()))
 end
 
+-- Reports what the game thinks of the add-on's bindable actions.
+--
+-- Three things can be wrong when a bound button does nothing, and they need telling apart before
+-- anything is changed: the action was never registered (Bindings.xml did not take), it was
+-- registered but nothing is bound to it (CreateDefaultActionBind did not take, and it is an
+-- unproven call), or something is bound and the chord is not reaching it.
+--
+-- All read-only calls, so this is safe to run any time.
+function addon:PrintBinds()
+	if type(GetActionIndicesFromName) ~= "function" then
+		Print("no binding API on this client")
+		return
+	end
+
+	local actions = {
+		"PBSCHATASSISTANT_CHANNEL_NEXT",
+		"PBSCHATASSISTANT_CHANNEL_PREV",
+		"PBSCHATASSISTANT_START_CHAT",
+	}
+
+	for _, actionName in ipairs(actions) do
+		local shortName = actionName:gsub("^PBSCHATASSISTANT_", "")
+		local layerIndex, categoryIndex, actionIndex = GetActionIndicesFromName(actionName)
+
+		if not layerIndex then
+			-- Bindings.xml never registered it. Nothing else below can be true.
+			Print("%s: NOT REGISTERED", shortName)
+		else
+			local bound = {}
+			local maxBindings = type(GetMaxBindingsPerAction) == "function" and GetMaxBindingsPerAction() or 2
+			for bindingIndex = 1, maxBindings do
+				local key = GetActionBindingInfo(layerIndex, categoryIndex, actionIndex, bindingIndex)
+				if key and key ~= 0 then
+					bound[#bound + 1] = string.format("%d (%s)", key, tostring(GetKeyName(key)))
+				end
+			end
+
+			if #bound == 0 then
+				Print("%s: registered at %d/%d/%d, nothing bound", shortName, layerIndex, categoryIndex, actionIndex)
+			else
+				Print("%s: registered, bound to %s", shortName, table.concat(bound, ", "))
+			end
+		end
+	end
+
+	if KEY_GAMEPAD_BOTH_SHOULDERS then
+		Print("L1+R1 is key %d (%s)", KEY_GAMEPAD_BOTH_SHOULDERS, tostring(GetKeyName(KEY_GAMEPAD_BOTH_SHOULDERS)))
+	else
+		Print("KEY_GAMEPAD_BOTH_SHOULDERS does not exist on this client")
+	end
+end
+
 function addon:InitSlashCommand()
 	SLASH_COMMANDS["/pbchat"] = function(args)
 		args = zo_strtrim(args or "")
@@ -966,6 +1018,8 @@ function addon:InitSlashCommand()
 			self.sv.captureMode = "off"
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
+		elseif command == "binds" then
+			self:PrintBinds()
 		elseif command == "channel" then
 			self.sv.channelKeys = (argument ~= "off")
 			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
