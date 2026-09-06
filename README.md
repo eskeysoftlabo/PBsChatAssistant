@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.3.3 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.3.4 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -93,10 +93,18 @@ code is among them. Nor can it be reached by hand in the binding screen, because
 produces a code for that combination -- modifiers there are ctrl, alt, shift and command only,
 and a gamepad button is never one of them.
 
-The default is declared with `CreateDefaultActionBind`, which is documented and unmarked but
-appears nowhere in the game's own UI source, so it is unproven. It is called last in
-initialisation: if it throws, the add-on is already built and keeps working, and the actions can
-still be bound by hand.
+The default is declared with `CreateDefaultActionBind`, from `Defaults.lua` -- the last file the
+manifest loads, after `Bindings.xml`. The timing is the point. Called from `EVENT_ADD_ON_LOADED`
+it did nothing: `/pbchat binds` reported the actions registered at 1/7/1..3 with nothing bound to
+any of them, because by then every file has been read and the binding system has settled.
+
+Whether the earlier window works is unproven. `CreateDefaultActionBind` is documented and
+unmarked but appears nowhere in the game's own UI source, so there is no known-good example of
+when it is meant to be called. `Defaults.lua` holds nothing else, so a throw takes only itself
+down, and the actions can always be bound by hand.
+
+**Bindings.xml does register on console** -- `/pbchat binds` confirms the actions exist -- so
+**Options -> Controls -> PB's ChatAssistant** is there and binding by hand works.
 
 ## The wait
 
@@ -266,8 +274,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.3.3
-## Version: 1.3.3
+## Title: PB’s ChatAssistant 1.3.4
+## Version: 1.3.4
 ```
 
 ---
