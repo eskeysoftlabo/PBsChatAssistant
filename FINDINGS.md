@@ -125,6 +125,17 @@ and settled at 50ms. The per-tick cost that prompted the change was real and was
 actually lived: the label is built only when the channel changes, and the trigger is read only
 while a press is outstanding.
 
+### …and why it was withdrawn again, in 1.9.0
+
+It shadowed **L2 on the HUD**, so blocking stopped working. `allowFallthrough="true"` with handlers
+returning `false` keeps a layer from *consuming* the input, and that was assumed to mean the game's
+own L2 would still fire underneath. It does not: an inherited bind in a pushed layer takes
+precedence over the gameplay action on the same button, fallthrough or not.
+
+Which leaves the technique sound and the choice of buttons wrong. Reviving it means finding buttons
+the HUD does not need — and note that anything reachable through `inheritsBindFrom` is, by
+definition, a button the game already uses somewhere.
+
 **The lesson worth keeping:** every entry above is a measurement, and measurements are sound. The
 sentence that was wrong was the one that generalised from them without being measured itself.
 

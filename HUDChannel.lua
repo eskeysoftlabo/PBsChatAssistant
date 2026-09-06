@@ -1,4 +1,16 @@
--- HUD channel switching. L2 release detection compensates for missing binding Up events.
+-- NOT LOADED. The manifest does not list this file, and Bindings.xml no longer declares the layer
+-- it needs, so nothing here runs.
+--
+-- It worked: L2+L3 on the HUD walked the outgoing chat channel, by inheriting binds from
+-- UI_SHORTCUT_LEFT_TRIGGER and UI_SHORTCUT_LEFT_STICK and composing the chord in Lua. What it also
+-- did was shadow L2 on the HUD, so blocking stopped working -- allowFallthrough="true" with these
+-- handlers returning false was not enough to keep the game's own L2 alive underneath.
+--
+-- Kept whole rather than deleted, because the technique is sound and only the choice of buttons is
+-- not. Reviving it means finding buttons the HUD does not need, restoring the layer in
+-- Bindings.xml, and putting this file back in the manifest.
+--
+-- Original note: L2 release detection compensates for missing binding Up events.
 local NAME = "PBsChatAssistantHUDChannel"
 local HOST_ADDON = "PBsChatAssistant"
 local LAYER = "PBsChatAssistantHUDChannelLayer"
