@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.3.4 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.3.5 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -84,27 +84,27 @@ Controls -> PB’s ChatAssistant -> Next Chat Channel
 and the channel walks with nothing shown, no buttons paused, and no arming. Unlike the arrows,
 these also work while the chat box is open, since a bound button has no text cursor to take.
 
-**Next Chat Channel** ships bound to **L1 + R1**. Only Next gets a default -- the list wraps, so
-one button reaches every channel.
+**Nothing is bound by default.** Bind it yourself under
 
-L2 + L3 cannot be expressed. Gamepad chords are not key-plus-modifier the way keyboard ones are:
-they are a fixed list of twenty `KEY_GAMEPAD_BOTH_*` codes, and no left-trigger-plus-left-stick
-code is among them. Nor can it be reached by hand in the binding screen, because the engine never
-produces a code for that combination -- modifiers there are ctrl, alt, shift and command only,
-and a gamepad button is never one of them.
+```
+Options -> Controls -> PB’s ChatAssistant -> Next Chat Channel
+                                          -> Previous Chat Channel
+```
 
-The default is declared with `CreateDefaultActionBind`, from `Defaults.lua` -- the last file the
-manifest loads, after `Bindings.xml`. The timing is the point. Called from `EVENT_ADD_ON_LOADED`
-it did nothing: `/pbchat binds` reported the actions registered at 1/7/1..3 with nothing bound to
-any of them, because by then every file has been read and the binding system has settled.
+`Bindings.xml` does register on console -- `/pbchat binds` reports the actions at 1/7/1..3 -- so
+the category is there and binding by hand works. Only Next is really needed: the channel list
+wraps, so one button reaches every channel.
 
-Whether the earlier window works is unproven. `CreateDefaultActionBind` is documented and
-unmarked but appears nowhere in the game's own UI source, so there is no known-good example of
-when it is meant to be called. `Defaults.lua` holds nothing else, so a throw takes only itself
-down, and the actions can always be bound by hand.
+An add-on cannot supply the default. `CreateDefaultActionBind` was tried from
+`EVENT_ADD_ON_LOADED` and again at file scope from a file loaded straight after `Bindings.xml`,
+where the actions exist and load is still in progress. `/pbchat binds` reported "nothing bound"
+both times. The call is documented and unmarked but appears nowhere in the game's own UI source,
+and `BindKeyToAction`, which would do it directly, is protected.
 
-**Bindings.xml does register on console** -- `/pbchat binds` confirms the actions exist -- so
-**Options -> Controls -> PB's ChatAssistant** is there and binding by hand works.
+L2 + L3 cannot be bound at all, by hand or otherwise. Gamepad chords are not key-plus-modifier
+the way keyboard ones are: they are a fixed list of twenty `KEY_GAMEPAD_BOTH_*` codes, and no
+left-trigger-plus-left-stick code is among them. Binding modifiers are ctrl, alt, shift and
+command only, so a gamepad button can never stand in as one. **L1 + R1** exists and is key 147.
 
 ## The wait
 
@@ -274,8 +274,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.3.4
-## Version: 1.3.4
+## Title: PB’s ChatAssistant 1.3.5
+## Version: 1.3.5
 ```
 
 ---

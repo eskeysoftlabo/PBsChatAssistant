@@ -119,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.3.4"
+local VERSION = "1.3.5"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1155,9 +1155,14 @@ local function OnAddOnLoaded(_, name)
 		end
 	end)
 
-	-- Default binds are declared in Defaults.lua, which the manifest loads after Bindings.xml.
-	-- Declaring them from here did nothing: by the time this event fires the binding system has
-	-- settled, and a default arriving afterwards has nothing to be the default of.
+	-- No default binds. CreateDefaultActionBind does not work from an add-on: tried from here,
+	-- and tried again at file scope from a file loaded straight after Bindings.xml so the actions
+	-- existed and load was still in progress. /pbchat binds reported "nothing bound" both times.
+	-- The call is documented and unmarked but appears nowhere in the game's own UI source, and
+	-- BindKeyToAction, which would do it directly, is protected.
+	--
+	-- The actions themselves register fine -- 1/7/1..3 on PS5 -- so binding by hand under
+	-- Options -> Controls -> PB's ChatAssistant is the way, and the only way.
 end
 
 em:RegisterForEvent(addon.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
