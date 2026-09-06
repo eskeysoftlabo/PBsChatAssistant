@@ -119,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.4.0"
+local VERSION = "1.4.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -573,7 +573,7 @@ function addon:OnCatcherKey(control, key)
 	-- A pending bind rides this key press for its trusted callstack, and must run before
 	-- anything else can decide to return early.
 	if pendingBind then
-		BindPendingAction()
+		BindPendingAction(true)
 		return
 	end
 
@@ -957,12 +957,18 @@ end
 -- This exists because PS5 has no keybinding screen. The actions register -- 1/7/1..3 -- and
 -- there is nowhere to bind them, and CreateDefaultActionBind does nothing from an add-on. If a
 -- protected call from a real key press works, that is the last route to a controller button.
-local function BindPendingAction()
+local function BindPendingAction(consume)
 	local request = pendingBind
-	pendingBind = nil
 
 	if not request then
 		return
+	end
+
+	-- Consumed when a key press carries it out, kept when the slash command tries it directly, so
+	-- that a direct attempt which quietly fails still leaves the key-press route armed. Binding
+	-- the same key twice is harmless.
+	if consume then
+		pendingBind = nil
 	end
 
 	if type(GetActionIndicesFromName) ~= "function" or type(BindKeyToAction) ~= "function" then
@@ -991,25 +997,42 @@ local function BindPendingAction()
 		tostring(GetKeyName(request.key)))
 end
 
+-- Tries the bind here first, then arms the key-press route as a fallback.
+--
+-- Whether a slash command is a trusted callstack is not known. It plausibly is -- submitting one
+-- starts with the player pressing a key -- and the earlier failure of /pbchat test proves nothing
+-- either way, because that was a PRIVATE function, which is refused regardless of trust.
+--
+-- If the direct attempt takes, /pbchat binds shows the binding and there is nothing more to do:
+-- one command, no arming, no key press, and the gamepad buttons never pause. If it does not, the
+-- pending request is already armed and the next key press retries it from inside OnKeyDown,
+-- which is a callstack we know the game itself binds from.
+--
+-- Binding the same key twice is harmless, so trying both costs nothing but a duplicate attempt.
 function addon:RequestBind(label, actionName, key, unbind)
 	pendingBind = { label = label, action = actionName, key = key, unbind = unbind }
 	pendingBindHandle = pendingBindHandle + 1
 	local handle = pendingBindHandle
 
-	if IsCatcherShown() then
-		Print("press any keyboard key now to %s %s", unbind and "unbind" or "bind", label)
-	else
-		-- Without a catcher there is no key press to ride, and no trusted callstack.
-		Print("run /pbchat enter first, then press a key")
-	end
-
-	-- A request left lying around would fire on some unrelated key press much later.
+	-- A request left lying around would fire on some unrelated key press much later. Armed
+	-- before the direct attempt, because a protected call from an untrusted callstack throws,
+	-- and a throw here would otherwise skip the expiry and strand the request.
 	zo_callLater(function()
 		if handle == pendingBindHandle and pendingBind then
 			pendingBind = nil
 			Print("bind request expired")
 		end
 	end, 30000)
+
+	if IsCatcherShown() then
+		Print("check /pbchat binds -- if it did not take, press any keyboard key now")
+	else
+		Print("check /pbchat binds -- if it did not take, /pbchat enter then press a key")
+	end
+
+	-- Attempted last: if a slash command turns out not to be a trusted callstack, this throws,
+	-- and everything above has already happened.
+	BindPendingAction(false)
 end
 
 function addon:InitSlashCommand()
