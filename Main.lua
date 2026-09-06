@@ -87,6 +87,7 @@ local DEFAULTS = {
 	channelKeys = true,
 	followInput = false,
 	idleSeconds = 15,
+	logResetDone = false,
 	triggerOnKeyboard = false,
 	log = false,
 }
@@ -124,7 +125,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.7.1"
+local VERSION = "1.7.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1117,6 +1118,21 @@ local function OnAddOnLoaded(_, name)
 	-- "default", which left the Options button dead on a fresh install, and a stored "default"
 	-- would have survived the fix and kept doing it. Losing a tuned delay is the cheaper mistake.
 	addon.sv = ZO_SavedVars:NewAccountWide("PBsChatAssistant_Data", 12, nil, DEFAULTS)
+	-- Log off, once.
+	--
+	-- It shipped ON for a stretch while the add-on was being built, when the only way to tell
+	-- "the event did not fire" from "it fired and the open declined" was to print everything.
+	-- That value is still sitting in the saved settings of anyone who ran those builds, spraying
+	-- refocus lines into chat on every Enter.
+	--
+	-- Cleared here rather than by moving the saved-variables version, which would have taken the
+	-- tuned wait and everything else with it. The marker makes it a one-time correction: turn the
+	-- log back on afterwards and it stays on.
+	if not addon.sv.logResetDone then
+		addon.sv.logResetDone = true
+		addon.sv.log = false
+	end
+
 	addon:InitSlashCommand()
 	addon:ApplyCatcher()
 	addon:ApplyWatch()
