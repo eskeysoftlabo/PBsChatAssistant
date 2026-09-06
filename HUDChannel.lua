@@ -2,6 +2,7 @@
 local NAME = "PBsChatAssistantHUDChannel"
 local HOST_ADDON = "PBsChatAssistant"
 local LAYER = "PBsChatAssistantHUDChannelLayer"
+local UPDATE_INTERVAL_MS = 100
 local channel = { buttons = {} }
 PBS_CHAT_ASSISTANT_HUD_CHANNEL = channel
 
@@ -54,15 +55,21 @@ function channel:SetActive(active)
     end
 end
 
-function channel:RefreshLabel()
+-- Nothing is built unless the channel actually changed. The old version formatted a string every
+-- tick and compared the result, so the allocation happened whether or not the text differed --
+-- which on console, where every add-on shares one memory pool, is the kind of per-frame garbage
+-- worth not making.
+function channel:RefreshLabel(force)
     local chat = GetChat()
     local id = chat and chat.currentChannel
-    local name = id and type(GetChannelName) == "function" and GetChannelName(id)
-    local text = string.format(GetString(SI_PBSCHATASSISTANT_CHANNEL_LABEL), tostring(name or id or "--"))
-    if text ~= self.lastText then
-        self.label:SetText(text)
-        self.lastText = text
+
+    if id == self.lastChannelId and not force then
+        return
     end
+    self.lastChannelId = id
+
+    local name = id and type(GetChannelName) == "function" and GetChannelName(id)
+    self.label:SetText(string.format(GetString(SI_PBSCHATASSISTANT_CHANNEL_LABEL), tostring(name or id or "--")))
 end
 
 function channel:ButtonDown(button)
@@ -96,10 +103,14 @@ function channel:Update()
     self:SetActive(not self.failed and not not IsEnabled())
     if not self.active then return end
     local onHUD = SCENE_MANAGER:IsShowing("hud")
+    local wasOnHUD = self.onHUD
+    self.onHUD = onHUD
     self.window:SetHidden(not onHUD)
     if onHUD then
         self:SampleTrigger()
-        self:RefreshLabel()
+        -- Forced when the HUD has just come back, since the label is stale from before the menu
+        -- and the channel id alone would not say so.
+        self:RefreshLabel(not wasOnHUD)
     end
 end
 
@@ -123,7 +134,13 @@ function channel:Start()
     self.triggerUnavailable = false
     self.running = true
     self:Update()
-    EVENT_MANAGER:RegisterForUpdate(NAME, 10, function() self:Update() end)
+    -- 100ms, not 10.
+    --
+    -- Nothing here needs a frame. The chord itself is event driven, out of the binding's Down
+    -- handler; this loop only notices the trigger being released, whether the HUD is in front,
+    -- and whether the channel changed. A tenth of a second is well inside human reaction for all
+    -- three, and ten times fewer wake-ups on a platform this add-on has already been bitten by.
+    EVENT_MANAGER:RegisterForUpdate(NAME, UPDATE_INTERVAL_MS, function() self:Update() end)
 end
 
 function channel:Stop()

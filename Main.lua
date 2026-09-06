@@ -125,7 +125,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.8.0"
+local VERSION = "1.8.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -464,8 +464,14 @@ local function IsCatcherShown()
 	return false
 end
 
+-- Off by default and stays off across an upgrade -- see the one-time reset in OnAddOnLoaded --
+-- but reachable. Every hard problem in this add-on was settled by turning this on and reading
+-- what actually happened: whether the event fired, whether the key arrived, whether the open was
+-- declined and why. Removing the switch would mean starting the next one blind.
 function addon:Log(formatString, ...)
-	-- Automatic debug tracing is disabled in the release build, including old saved settings.
+	if self.sv and self.sv.log then
+		Print(formatString, ...)
+	end
 end
 
 function addon:ApplyCatcher()
@@ -968,8 +974,8 @@ function addon:InitSlashCommand()
 		elseif command == "probe" then
 			self:StartProbe(argument ~= "" and argument or "default")
 		elseif command == "log" then
-			self.sv.log = false
-			Print("debug logging is disabled in this release")
+			self.sv.log = (argument ~= "off")
+			Print("log %s", self.sv.log and "on" or "off")
 		elseif command == "follow" then
 			self.sv.followInput = (argument ~= "off")
 			self:ApplyCatcher()
