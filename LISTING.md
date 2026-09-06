@@ -1,4 +1,4 @@
-# Store listing copy — PB's ChatAssistant 1.3.0
+# Store listing copy — PB's ChatAssistant 1.3.1
 
 Text for the ZOS Console AddOn Uploader. Plain text, no markup, so it survives whatever the
 uploader does to it.
@@ -51,7 +51,8 @@ you open the chat window from the controller, which on its own removes most of t
 
 SETTINGS
 
-Settings -> Add-Ons -> PB's ChatAssistant, or the chat commands below.
+Settings -> Add-Ons -> PB's ChatAssistant holds the pause described below. The rest are
+chat commands.
 
   /pbchat              Show current state
   /pbchat delay <ms>   Pause before the window opens, 0-5000, default 100

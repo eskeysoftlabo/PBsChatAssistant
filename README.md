@@ -24,7 +24,7 @@ Opening from Enter.
 Nothing is armed at install. `/pbchat` reports the running version and settings:
 
 ```
-PB’s ChatAssistant: 1.3.0 -- on, capture off, delay 100 ms
+PB’s ChatAssistant: 1.3.1 -- on, capture off, delay 100 ms
 ```
 
 ## How it works
@@ -151,9 +151,14 @@ That second one is **not solved**. See Limitations.
 
 ## Settings panel
 
-**Settings -> Add-Ons -> PB’s ChatAssistant** (LibHarvensAddonSettings), with everything the
-slash commands reach: the master switch, the wait, arming Enter, releasing the keyboard once chat
-opens, the arrow keys, the focus watcher and the log.
+**Settings -> Add-Ons -> PB’s ChatAssistant** (LibHarvensAddonSettings) carries the wait, and
+nothing else.
+
+It is the only setting a player has reason to reach for, because the right value is a property of
+the machine rather than of the add-on, and getting it wrong is the one failure that looks like the
+add-on is broken rather than mistuned. Everything else is either on because it should be or is a
+diagnostic; a panel of switches that are already right is just somewhere to make a mistake. The
+slash commands still reach all of them.
 
 ## Commands
 
@@ -256,8 +261,8 @@ version, edit these two adjacent lines in `PBsChatAssistant.addon`, and `VERSION
 which is what `/pbchat` reports:
 
 ```
-## Title: PB’s ChatAssistant 1.3.0
-## Version: 1.3.0
+## Title: PB’s ChatAssistant 1.3.1
+## Version: 1.3.1
 ```
 
 ---
