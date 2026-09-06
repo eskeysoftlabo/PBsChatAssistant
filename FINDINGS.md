@@ -117,6 +117,13 @@ the `hud` scene, `allowFallthrough="true"`, handlers returning false, so L2 and 
 jobs. Analog triggers do not report Up reliably, so `GetGamepadLeftTriggerMagnitude()` is polled to
 clear the latch.
 
+A third assumption was made and corrected the same way in 1.8.1: that the HUD loop could be slowed
+from 10ms to 100ms because nothing in it needs a frame. A quick tap of L2 fits entirely between two
+samples that far apart, so the press is never seen and the latch it should have cleared stays set,
+swallowing the next chord. Measured in play. The per-tick cost that prompted the change was real
+and was fixed where it actually lived: the label is built only when the channel changes, and the
+trigger is read only when a press is outstanding.
+
 **The lesson worth keeping:** every entry above is a measurement, and measurements are sound. The
 sentence that was wrong was the one that generalised from them without being measured itself.
 

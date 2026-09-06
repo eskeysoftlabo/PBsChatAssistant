@@ -2,7 +2,18 @@
 local NAME = "PBsChatAssistantHUDChannel"
 local HOST_ADDON = "PBsChatAssistant"
 local LAYER = "PBsChatAssistantHUDChannelLayer"
-local UPDATE_INTERVAL_MS = 100
+-- 10ms, back from the 100ms that seemed defensible and was not.
+--
+-- The reasoning for slowing it down was that nothing here needs a frame. The reasoning was wrong,
+-- and the way it was wrong is worth keeping: a quick tap of L2 fits entirely between two samples
+-- a tenth of a second apart, so the press is never seen, triggerWasDown never gets set, the
+-- release that would clear the latch is never recognised, and the NEXT chord is ignored. Measured
+-- in play, not derived.
+--
+-- The cost that prompted the change is dealt with where it actually was -- the label is built only
+-- when the channel changes, and the trigger is only read when there is a press outstanding to
+-- release -- so most ticks now do almost nothing regardless of how often they run.
+local UPDATE_INTERVAL_MS = 10
 local channel = { buttons = {} }
 PBS_CHAT_ASSISTANT_HUD_CHANNEL = channel
 
@@ -21,8 +32,14 @@ function channel:ResetButtons()
     self.triggerWasDown = false
 end
 
-function channel:SampleTrigger()
+-- Reads the trigger only when there is something to notice.
+--
+-- The loop is watching for a release, and a release only matters once a press has been seen.
+-- ButtonDown samples too, so the press itself is never missed by skipping here: L2's Down handler
+-- is what sets triggerWasDown in the first place.
+function channel:SampleTrigger(force)
     if self.triggerUnavailable then return end
+    if not force and not self.triggerWasDown then return end
     local ok, value = false, nil
     if type(GetGamepadLeftTriggerMagnitude) == "function" then
         ok, value = pcall(GetGamepadLeftTriggerMagnitude)
@@ -74,7 +91,7 @@ end
 
 function channel:ButtonDown(button)
     if not self.active or not IsEnabled() or not SCENE_MANAGER:IsShowing("hud") then return false end
-    self:SampleTrigger()
+    self:SampleTrigger(true)
     self.buttons[button] = true
     if self.buttons.L3 and self.buttons.L2 and not self.chordLatched then
         self.chordLatched = true
@@ -134,12 +151,6 @@ function channel:Start()
     self.triggerUnavailable = false
     self.running = true
     self:Update()
-    -- 100ms, not 10.
-    --
-    -- Nothing here needs a frame. The chord itself is event driven, out of the binding's Down
-    -- handler; this loop only notices the trigger being released, whether the HUD is in front,
-    -- and whether the channel changed. A tenth of a second is well inside human reaction for all
-    -- three, and ten times fewer wake-ups on a platform this add-on has already been bitten by.
     EVENT_MANAGER:RegisterForUpdate(NAME, UPDATE_INTERVAL_MS, function() self:Update() end)
 end
 
