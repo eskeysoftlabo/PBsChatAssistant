@@ -119,7 +119,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.4.1"
+local VERSION = "1.4.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -570,13 +570,6 @@ function addon:OnCatcherKey(control, key)
 	self:Log("key %d (%s), entry %s, input %s", key, tostring(GetKeyName(key)),
 		tostring(IsTextEntryOpen()), IsGamepadInput() and "gamepad" or "keyboard")
 
-	-- A pending bind rides this key press for its trusted callstack, and must run before
-	-- anything else can decide to return early.
-	if pendingBind then
-		BindPendingAction(true)
-		return
-	end
-
 	-- Any key means the player is still at the keyboard, so the catcher stays up and the idle
 	-- countdown restarts. Only Enter opens the box.
 	self:TouchKeyboardActivity()
@@ -614,10 +607,6 @@ end
 -- longer a case.
 local watchArmed = false
 local armHandle = 0
-
--- Set by /pbchat bind, consumed by the next key press. See BindPendingAction.
-local pendingBind = nil
-local pendingBindHandle = 0
 
 local function GetEditControl()
 	local chat = GetChatSystem()
@@ -893,6 +882,14 @@ end
 
 -- Reports what the game thinks of the add-on's bindable actions.
 --
+-- Read-only, and that is not a limitation of this function but of add-ons. BindKeyToAction cannot
+-- be called from here or from anywhere else in an add-on: the client refuses it as a PRIVATE
+-- function, whatever ESOUIDocumentation.txt says, and the refusal names the add-on's own frames
+-- as the untrusted part. Measured from a slash command whose traceback bottoms out in
+-- ZO_GamepadTextChatTextEntryEditBox_Enter -- a real key press -- so the hardware event was
+-- there and made no difference. Add-on Lua is insecure code by its nature; one frame of it taints
+-- the callstack, and no calling context escapes that.
+--
 -- Three things can be wrong when a bound button does nothing, and they need telling apart before
 -- anything is changed: the action was never registered (Bindings.xml did not take), it was
 -- registered but nothing is bound to it (CreateDefaultActionBind did not take, and it is an
@@ -941,98 +938,6 @@ function addon:PrintBinds()
 	else
 		Print("KEY_GAMEPAD_BOTH_SHOULDERS does not exist on this client")
 	end
-end
-
--- Binding an action from inside a key press.
---
--- BindKeyToAction is *protected*, and protected is not private. A private function cannot be
--- called by add-on code at any time -- that is what stopped StartChatInput being used. A
--- protected one can, provided the callstack still traces back to a hardware input event, which
--- is exactly what the catcher's OnKeyDown is. The game binds this way itself, straight out of a
--- keybind callback, with no separate save step.
---
--- The key that is pressed is not the key being bound. It is only there to make the callstack
--- trusted; the chord being assigned is a gamepad code that never reaches add-on Lua at all.
---
--- This exists because PS5 has no keybinding screen. The actions register -- 1/7/1..3 -- and
--- there is nowhere to bind them, and CreateDefaultActionBind does nothing from an add-on. If a
--- protected call from a real key press works, that is the last route to a controller button.
-local function BindPendingAction(consume)
-	local request = pendingBind
-
-	if not request then
-		return
-	end
-
-	-- Consumed when a key press carries it out, kept when the slash command tries it directly, so
-	-- that a direct attempt which quietly fails still leaves the key-press route armed. Binding
-	-- the same key twice is harmless.
-	if consume then
-		pendingBind = nil
-	end
-
-	if type(GetActionIndicesFromName) ~= "function" or type(BindKeyToAction) ~= "function" then
-		Print("no binding API on this client")
-		return
-	end
-
-	local layerIndex, categoryIndex, actionIndex = GetActionIndicesFromName(request.action)
-	if not layerIndex then
-		Print("%s is not registered", request.action)
-		return
-	end
-
-	if request.unbind then
-		if type(UnbindKeyFromAction) ~= "function" then
-			Print("no unbind on this client")
-			return
-		end
-		UnbindKeyFromAction(layerIndex, categoryIndex, actionIndex, 1)
-		Print("unbound %s -- check with /pbchat binds", request.label)
-		return
-	end
-
-	BindKeyToAction(layerIndex, categoryIndex, actionIndex, 1, request.key)
-	Print("bound %s to key %d (%s) -- check with /pbchat binds", request.label, request.key,
-		tostring(GetKeyName(request.key)))
-end
-
--- Tries the bind here first, then arms the key-press route as a fallback.
---
--- Whether a slash command is a trusted callstack is not known. It plausibly is -- submitting one
--- starts with the player pressing a key -- and the earlier failure of /pbchat test proves nothing
--- either way, because that was a PRIVATE function, which is refused regardless of trust.
---
--- If the direct attempt takes, /pbchat binds shows the binding and there is nothing more to do:
--- one command, no arming, no key press, and the gamepad buttons never pause. If it does not, the
--- pending request is already armed and the next key press retries it from inside OnKeyDown,
--- which is a callstack we know the game itself binds from.
---
--- Binding the same key twice is harmless, so trying both costs nothing but a duplicate attempt.
-function addon:RequestBind(label, actionName, key, unbind)
-	pendingBind = { label = label, action = actionName, key = key, unbind = unbind }
-	pendingBindHandle = pendingBindHandle + 1
-	local handle = pendingBindHandle
-
-	-- A request left lying around would fire on some unrelated key press much later. Armed
-	-- before the direct attempt, because a protected call from an untrusted callstack throws,
-	-- and a throw here would otherwise skip the expiry and strand the request.
-	zo_callLater(function()
-		if handle == pendingBindHandle and pendingBind then
-			pendingBind = nil
-			Print("bind request expired")
-		end
-	end, 30000)
-
-	if IsCatcherShown() then
-		Print("check /pbchat binds -- if it did not take, press any keyboard key now")
-	else
-		Print("check /pbchat binds -- if it did not take, /pbchat enter then press a key")
-	end
-
-	-- Attempted last: if a slash command turns out not to be a trusted callstack, this throws,
-	-- and everything above has already happened.
-	BindPendingAction(false)
 end
 
 function addon:InitSlashCommand()
@@ -1121,22 +1026,6 @@ function addon:InitSlashCommand()
 			self.sv.captureMode = "off"
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
-		elseif command == "bind" or command == "unbind" then
-			local unbind = (command == "unbind")
-			local which, keyText = argument:match("^(%S*)%s*(.*)$")
-			local key = tonumber(keyText)
-
-			if which == "next" then
-				self:RequestBind("Next Chat Channel", "PBSCHATASSISTANT_CHANNEL_NEXT",
-					key or KEY_GAMEPAD_BOTH_SHOULDERS, unbind)
-			elseif which == "prev" then
-				self:RequestBind("Previous Chat Channel", "PBSCHATASSISTANT_CHANNEL_PREV",
-					key or KEY_GAMEPAD_BOTH_LEFT_SHOULDER_LEFT_STICK, unbind)
-			elseif which == "chat" then
-				self:RequestBind("Open Chat", "PBSCHATASSISTANT_START_CHAT", key, unbind)
-			else
-				Print("%s next | prev | chat [keycode]", command)
-			end
 		elseif command == "binds" then
 			self:PrintBinds()
 		elseif command == "channel" then
@@ -1274,14 +1163,16 @@ local function OnAddOnLoaded(_, name)
 		end
 	end)
 
-	-- No default binds. CreateDefaultActionBind does not work from an add-on: tried from here,
-	-- and tried again at file scope from a file loaded straight after Bindings.xml so the actions
-	-- existed and load was still in progress. /pbchat binds reported "nothing bound" both times.
-	-- The call is documented and unmarked but appears nowhere in the game's own UI source, and
-	-- BindKeyToAction, which would do it directly, is protected.
+	-- No default binds, and no way to make any. CreateDefaultActionBind does nothing from an
+	-- add-on, tried from here and from file scope straight after Bindings.xml. BindKeyToAction is
+	-- refused outright: the client calls it PRIVATE, whatever the documentation's "protected"
+	-- says, and names the add-on's own frames as what made the callstack untrusted -- measured
+	-- from a slash command whose traceback bottoms out in a real key press, so the hardware event
+	-- was there and changed nothing.
 	--
-	-- The actions themselves register fine -- 1/7/1..3 on PS5 -- so binding by hand under
-	-- Options -> Controls -> PB's ChatAssistant is the way, and the only way.
+	-- The actions register fine, 1/7/1..3 on PS5, and on this platform there is no keybinding
+	-- screen to reach them from either. They are kept for PC, and for a console update that adds
+	-- one.
 end
 
 em:RegisterForEvent(addon.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)

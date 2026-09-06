@@ -84,23 +84,27 @@ itself: `CreateDefaultActionBind` was tried from `EVENT_ADD_ON_LOADED` and again
 from a file loaded straight after `Bindings.xml`, and `/pbchat binds` reported "nothing bound"
 both times; `BindKeyToAction`, which would do it directly, is protected.
 
-`/pbchat bind next` is the way in. `BindKeyToAction` is *protected*, and protected is not
-private: a private function cannot be called by add-on code at any time, while a protected one
-can, provided the callstack still traces back to a hardware input event. The catcher's
-`OnKeyDown` is exactly that, and the game binds this way itself, straight out of a keybind
-callback with no separate save step.
+**Nor from the add-on.** `BindKeyToAction` looked like the way in, because the documentation
+marks it *protected* rather than private, and protected calls are allowed from a callstack that
+traces back to player input. It is not:
 
 ```
-/pbchat enter        -- arm the catcher, so there is a key press to ride
-/pbchat bind next    -- then press any keyboard key
-/pbchat binds        -- confirm
+Attempt to access a private function 'BindKeyToAction' from insecure code.
+The callstack became untrusted 2 stack frame(s) from the top.
 ```
 
-The key pressed is not the key being bound; it is only there to make the callstack trusted. The
-chord being assigned is a gamepad code that never reaches add-on Lua at all. `/pbchat bind next
-147` names a code explicitly, and `/pbchat unbind next` undoes it.
+The client calls it **private**, whatever the documentation says -- the same disagreement as
+`SetSetting`, which is unmarked and is also private. And the two frames that made the callstack
+untrusted are the add-on's own: that traceback came from a slash command and bottoms out in
+`ZO_GamepadTextChatTextEntryEditBox_Enter`, a real key press. The hardware event was there and
+changed nothing.
 
-The actions are also kept for their own sake. They are kept because they cost nothing
+Add-on Lua is insecure code by its nature. One frame of it taints the callstack, so no calling
+context escapes this -- not a timer, not an event, not a slash command, not `OnKeyDown`.
+
+So the actions register and stay out of reach on PS5. They are kept because they cost nothing and
+are correct on PC, and because a console update that adds the screen would make them work with no
+change here. They are kept because they cost nothing
 and are correct on PC, and because a console update that adds the screen would make them work
 with no change here.
 
@@ -205,8 +209,6 @@ slash commands still reach all of them.
 | `/pbchat probe [tier]` | 15 s: report what keys reach a tier, keyboard and gamepad apart |
 | `/pbchat trial [tier]` | 20 s with a live catcher, then off by itself |
 | `/pbchat capture off\|default\|high\|medium\|low` | Which tier catches Enter |
-| `/pbchat bind next\|prev\|chat [code]` | Bind an action, from inside the next key press |
-| `/pbchat unbind next\|prev\|chat` | Undo one |
 | `/pbchat binds` | Report whether the bindable actions registered, and what is bound |
 | `/pbchat unstick` | Force the chat entry closed, giving the controller back |
 | `/pbchat on` / `off` | Master switch |
