@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.12.2"
+local VERSION = "1.12.3"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -849,8 +849,28 @@ end
 local channelFragment = nil
 local channelFragmentAdded = false
 
-local function GetHudScene()
-	return type(SCENE_MANAGER) == "table" and SCENE_MANAGER:GetScene("hud")
+-- Both HUD scenes, because there are two.
+--
+-- "hud" is the one 1.8.0 used, and it was right for 1.8.0: the chord was pressed with the chat box
+-- closed. Opening the box can put the base scene on "hudui" instead, and a fragment sitting on a
+-- scene that is not showing never shows either -- which is how the layer came to be added, logged,
+-- and completely inert. Registering on both costs nothing; whichever is in front carries it.
+local SCENE_NAMES = { "hud", "hudui" }
+
+local function ForEachHudScene(callback)
+	if type(SCENE_MANAGER) ~= "table" then
+		return false
+	end
+
+	local found = false
+	for _, sceneName in ipairs(SCENE_NAMES) do
+		local scene = SCENE_MANAGER:GetScene(sceneName)
+		if scene then
+			found = true
+			callback(scene)
+		end
+	end
+	return found
 end
 
 function addon:SetChannelLayer(wanted)
@@ -858,8 +878,7 @@ function addon:SetChannelLayer(wanted)
 		return
 	end
 
-	local scene = GetHudScene()
-	if not scene or type(ZO_ActionLayerFragment) ~= "table" then
+	if type(ZO_ActionLayerFragment) ~= "table" then
 		layerPushWorks = false
 		return
 	end
@@ -874,11 +893,16 @@ function addon:SetChannelLayer(wanted)
 
 	if wanted and not channelFragmentAdded then
 		channelFragmentAdded = true
-		scene:AddFragment(channelFragment)
-		self:Log("channel layer up")
+		ForEachHudScene(function(scene)
+			scene:AddFragment(channelFragment)
+		end)
+		self:Log("channel layer up (scene %s, active %s)",
+			tostring(SCENE_MANAGER:GetCurrentSceneName()), tostring(IsLayerActive()))
 	elseif not wanted and channelFragmentAdded then
 		channelFragmentAdded = false
-		scene:RemoveFragment(channelFragment)
+		ForEachHudScene(function(scene)
+			scene:RemoveFragment(channelFragment)
+		end)
 		self:Log("channel layer down")
 	end
 end
