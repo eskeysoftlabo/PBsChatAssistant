@@ -24,41 +24,29 @@
 	</Layer>
 	<!-- Channel switching from L2+L3, live only while the chat entry is open.
 	     
-	     1.8.0 put a layer like this on the hud scene, so it shadowed L2 for the whole of play and
-	     blocking stopped working. The buttons were not the mistake; the timing was. A layer pushed
-	     only while the player is typing costs nothing, because nothing else on the pad is wanted
-	     then: the entry binds UI_SHORTCUT_PRIMARY and UI_SHORTCUT_NEGATIVE and that is all.
+	     This block is 1.8.0's declaration, restored verbatim in shape: same layer name, same two
+	     actions, same attributes, both Down and Up, handlers returning. That version demonstrably
+	     delivered these buttons. Every variation tried since did not, while measuring as though it
+	     should: registered, bound to the same key as the inherit source, layer active and innermost
+	     of three, and still nothing arriving. So the declaration goes back to the one known to
+	     work, and the only remaining difference is scope.
 	     
-	     Only L3 is declared here. L2 is never bound, anywhere: what the chord needs to know is
-	     whether the trigger is pulled at the moment L3 goes down, and that is a question
-	     GetGamepadLeftTriggerMagnitude answers on the spot. So there is no second action to
-	     shadow L2 with, no chord state to latch, and no polling to notice a release that analogue
-	     triggers do not report reliably. Each L3 press is decided on its own.
+	     Scope is what 1.8.0 got wrong. Its fragment sat on the hud scene for the whole of play, so
+	     it shadowed L2 and blocking stopped working. Here the fragment is added only while the
+	     chat box is open, and to hudui as well as hud, since opening the box moves the base scene
+	     there. While the player is typing there is nothing to shadow.
 	     
 	     allowFallthrough stays true. False means a layer blocks every action it does not declare,
-	     which here would take submit and cancel with it.
-	     
-	     Pushed and popped from Lua, with a watchdog that removes it whenever the entry is not
-	     open. A layer left pushed is exactly the 1.8.0 failure, so it is guarded rather than
-	     trusted. -->
-	<Layer name="PBsChatAssistantChatChannelLayer" allowFallthrough="true">
+	     which here would take submit and cancel with it. -->
+	<Layer name="PBsChatAssistantHUDChannelLayer" allowFallthrough="true">
 		<Category>
-			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_CHORD" inheritsBindFrom="UI_SHORTCUT_LEFT_STICK" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
-				<Down>PBS_CHAT_ASSISTANT:OnChannelChord()</Down>
+			<Action name="PBSCHATASSISTANT_HUD_CHANNEL_L3" inheritsBindFrom="UI_SHORTCUT_LEFT_STICK" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>return PBS_CHAT_ASSISTANT:OnChordButton("L3", true)</Down>
+				<Up>return PBS_CHAT_ASSISTANT:OnChordButton("L3", false)</Up>
 			</Action>
-			<!-- Diagnostic only, and it does nothing but write a log line.
-			     
-			     Everything measurable says the L3 action above should fire: registered, bound to
-			     key 129, in a layer confirmed active and innermost, carried by a fragment. It does
-			     not. So the question is whether this layer delivers anything at all, and L2 is the
-			     one button known to be reachable from a layer of ours: shadowing it is what broke
-			     blocking in 1.8.0.
-			     
-			     If L2 logs and L3 does not, the layer works and key 129 is being taken before UI
-			     actions see it. If neither logs, the layer delivers nothing and the fault is
-			     nearer home. Removed either way once it has answered. -->
-			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_PROBE" inheritsBindFrom="UI_SHORTCUT_LEFT_TRIGGER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
-				<Down>PBS_CHAT_ASSISTANT:OnChannelProbe()</Down>
+			<Action name="PBSCHATASSISTANT_HUD_CHANNEL_L2" inheritsBindFrom="UI_SHORTCUT_LEFT_TRIGGER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>return PBS_CHAT_ASSISTANT:OnChordButton("L2", true)</Down>
+				<Up>return PBS_CHAT_ASSISTANT:OnChordButton("L2", false)</Up>
 			</Action>
 		</Category>
 	</Layer>

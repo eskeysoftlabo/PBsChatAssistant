@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.12.3"
+local VERSION = "1.13.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -771,7 +771,73 @@ end
 --
 -- A layer left pushed by accident recreates that failure exactly, so it is watched rather than
 -- trusted: every tick that finds the entry closed and the layer up takes the layer down.
-local LAYER_NAME = "PBsChatAssistantChatChannelLayer"
+local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
+
+-- How far the trigger counts as pulled. Analogue, so it needs a line drawn somewhere; half is far
+-- enough to be deliberate and short of where the trigger stops.
+local TRIGGER_PULLED = 0.5
+
+-- L3 went down. Whether that means anything depends on L2, asked right now.
+--
+-- L2 is never bound. Binding it would mean shadowing it, which is the whole reason 1.8.0 had to be
+-- withdrawn, and it would buy nothing: the trigger's position is readable on demand, so the chord
+-- can be decided inside L3's own handler. Nothing is latched and nothing is polled, which also
+-- sidesteps analogue triggers not reporting their release reliably -- there is no release to miss
+-- when each press is judged by itself.
+-- L2 and L3 observed separately, the chord composed here.
+--
+-- This is 1.8.0's shape, kept because 1.8.0's declaration is what demonstrably delivered these
+-- buttons. Both are declared, both report Down and Up, and the handlers return, all of which
+-- differed in the versions that measured perfect and did nothing.
+--
+-- Held state rather than reading the trigger on demand: the earlier design asked
+-- GetGamepadLeftTriggerMagnitude inside L3's handler, which is tidier and needs L3 to arrive,
+-- which is the thing that was not happening. Either button arriving is enough to prove the layer
+-- delivers at all.
+local chordButtons = {}
+local chordLatched = false
+
+function addon:OnChordButton(button, down)
+	self:Log("chord %s %s", button, down and "down" or "up")
+
+	if not down then
+		chordButtons[button] = nil
+		if not chordButtons.L2 and not chordButtons.L3 then
+			chordLatched = false
+		end
+		return false
+	end
+
+	chordButtons[button] = true
+
+	if chordButtons.L2 and chordButtons.L3 and not chordLatched then
+		chordLatched = true
+		if self.sv and self.sv.enabled and self.sv.entryChannelLayer then
+			-- Suppressed alert: the entry's own channel label is on screen and updates itself.
+			self:CycleChannel(1, true)
+		end
+	end
+
+	-- Never consumed. The layer allows fallthrough and these handlers decline the input, so
+	-- whatever else wants L2 or L3 is welcome to it.
+	return false
+end
+
+----------------------------------------------------------------------------------------------
+-- The chat-entry channel layer
+----------------------------------------------------------------------------------------------
+
+-- L1 and R1 walk the channel, from the controller, while the chat entry is open.
+--
+-- The layer is declared in Bindings.xml and pushed only for as long as the entry is open. That
+-- scoping is the whole design. 1.8.0 put an equivalent layer on the hud scene, where it shadowed
+-- L2 for the whole of play and blocking silently stopped working -- an inherited bind in a pushed
+-- layer beats the gameplay action on the same button, allowFallthrough or not. While the player is
+-- typing there is no gameplay action to beat.
+--
+-- A layer left pushed by accident recreates that failure exactly, so it is watched rather than
+-- trusted: every tick that finds the entry closed and the layer up takes the layer down.
+local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
 
 -- How far the trigger counts as pulled. Analogue, so it needs a line drawn somewhere; half is far
 -- enough to be deliberate and short of where the trigger stops.
