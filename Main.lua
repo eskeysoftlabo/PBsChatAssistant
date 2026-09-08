@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.13.0"
+local VERSION = "1.13.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -841,60 +841,56 @@ end
 local channelFragment = nil
 local channelFragmentAdded = false
 
--- Both HUD scenes, because there are two.
+-- One scene, and the fragment made early.
 --
--- "hud" is the one 1.8.0 used, and it was right for 1.8.0: the chord was pressed with the chat box
--- closed. Opening the box can put the base scene on "hudui" instead, and a fragment sitting on a
--- scene that is not showing never shows either -- which is how the layer came to be added, logged,
--- and completely inert. Registering on both costs nothing; whichever is in front carries it.
-local SCENE_NAMES = { "hud", "hudui" }
+-- Both of those are 1.8.0's shape, and 1.8.0 is the only version that ever delivered these
+-- buttons. Two departures from it had crept in and neither was measured:
+--
+--   hudui as well as hud. One fragment registered on two scenes is not obviously safe: opening
+--   the chat box moves the base scene from one to the other, so the leaving scene hides the
+--   fragment while the arriving scene shows it, and whichever call lands last decides. A fragment
+--   that ends hidden explains everything seen here, including IsActionLayerActiveByName saying
+--   the layer is active, which it also said for a name-pushed layer that had no working binds.
+--
+--   Created lazily inside a tick, rather than on EVENT_PLAYER_ACTIVATED before anything asks for
+--   it.
+--
+-- So: hud only, built at activation, and the only thing left that differs from 1.8.0 is when it is
+-- added and removed. That is the part worth keeping, because it is what stops the layer shadowing
+-- a button for the whole of play.
+local channelFragment = nil
+local channelFragmentAdded = false
 
-local function ForEachHudScene(callback)
-	if type(SCENE_MANAGER) ~= "table" then
-		return false
-	end
+local function GetChannelScene()
+	return type(SCENE_MANAGER) == "table" and SCENE_MANAGER:GetScene("hud")
+end
 
-	local found = false
-	for _, sceneName in ipairs(SCENE_NAMES) do
-		local scene = SCENE_MANAGER:GetScene(sceneName)
-		if scene then
-			found = true
-			callback(scene)
-		end
+function addon:InitChannelLayer()
+	if channelFragment or type(ZO_ActionLayerFragment) ~= "table" then
+		return
 	end
-	return found
+	channelFragment = ZO_ActionLayerFragment:New(LAYER_NAME)
+	layerPushWorks = channelFragment and true or false
 end
 
 function addon:SetChannelLayer(wanted)
-	if layerPushWorks == false then
-		return
-	end
-
-	if type(ZO_ActionLayerFragment) ~= "table" then
-		layerPushWorks = false
-		return
-	end
-
 	if not channelFragment then
-		channelFragment = ZO_ActionLayerFragment:New(LAYER_NAME)
-		layerPushWorks = channelFragment and true or false
-		if not channelFragment then
-			return
-		end
+		return
+	end
+
+	local scene = GetChannelScene()
+	if not scene then
+		return
 	end
 
 	if wanted and not channelFragmentAdded then
 		channelFragmentAdded = true
-		ForEachHudScene(function(scene)
-			scene:AddFragment(channelFragment)
-		end)
+		scene:AddFragment(channelFragment)
 		self:Log("channel layer up (scene %s, active %s)",
 			tostring(SCENE_MANAGER:GetCurrentSceneName()), tostring(IsLayerActive()))
 	elseif not wanted and channelFragmentAdded then
 		channelFragmentAdded = false
-		ForEachHudScene(function(scene)
-			scene:RemoveFragment(channelFragment)
-		end)
+		scene:RemoveFragment(channelFragment)
 		self:Log("channel layer down")
 	end
 end
@@ -1385,6 +1381,12 @@ local function OnAddOnLoaded(_, name)
 	-- The cost is that the buttons are dead while the player is at the keyboard, and that the
 	-- first key of a session opens the box whatever key it was. /pbchat follow off and
 	-- /pbchat trigger off turn those two off separately.
+	-- Built here rather than on first use, matching 1.8.0, which made its fragment as soon as the
+	-- player was in the world.
+	em:RegisterForEvent(addon.name, EVENT_PLAYER_ACTIVATED, function()
+		addon:InitChannelLayer()
+	end)
+
 	em:RegisterForEvent(addon.name, EVENT_INPUT_TYPE_CHANGED, function(_, isGamepad)
 		addon:Log("input type -> %s, entry %s", isGamepad and "gamepad" or "keyboard",
 			tostring(IsTextEntryOpen()))
