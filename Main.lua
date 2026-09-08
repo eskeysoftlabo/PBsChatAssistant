@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.10.0"
+local VERSION = "1.11.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -767,6 +767,42 @@ end
 -- A layer left pushed by accident recreates that failure exactly, so it is watched rather than
 -- trusted: every tick that finds the entry closed and the layer up takes the layer down.
 local LAYER_NAME = "PBsChatAssistantChatChannelLayer"
+
+-- How far the trigger counts as pulled. Analogue, so it needs a line drawn somewhere; half is far
+-- enough to be deliberate and short of where the trigger stops.
+local TRIGGER_PULLED = 0.5
+
+-- L3 went down. Whether that means anything depends on L2, asked right now.
+--
+-- L2 is never bound. Binding it would mean shadowing it, which is the whole reason 1.8.0 had to be
+-- withdrawn, and it would buy nothing: the trigger's position is readable on demand, so the chord
+-- can be decided inside L3's own handler. Nothing is latched and nothing is polled, which also
+-- sidesteps analogue triggers not reporting their release reliably -- there is no release to miss
+-- when each press is judged by itself.
+function addon:OnChannelChord()
+	if not self.sv or not self.sv.enabled or not self.sv.entryChannelLayer then
+		return
+	end
+
+	if not IsTextEntryOpen() then
+		return
+	end
+
+	if type(GetGamepadLeftTriggerMagnitude) ~= "function" then
+		return
+	end
+
+	local pull = GetGamepadLeftTriggerMagnitude()
+	if type(pull) ~= "number" or pull < TRIGGER_PULLED then
+		-- L3 on its own. Left alone deliberately: the layer allows fallthrough, so whatever else
+		-- wants the stick click is welcome to it.
+		return
+	end
+
+	self:Log("L2+L3")
+	-- Suppressed alert: the entry's own channel label is already on screen and updates itself.
+	self:CycleChannel(1, true)
+end
 
 -- nil until tried, then true or false for good.
 local layerPushWorks = nil

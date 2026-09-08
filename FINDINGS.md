@@ -136,6 +136,22 @@ Which leaves the technique sound and the choice of buttons wrong. Reviving it me
 the HUD does not need — and note that anything reachable through `inheritsBindFrom` is, by
 definition, a button the game already uses somewhere.
 
+### …and how it came back, in 1.10.0 and 1.11.0
+
+Two changes, neither of them to the buttons.
+
+**The layer is pushed only while the chat entry is open.** That is the whole fix. While the player
+is typing there is no gameplay action to shadow: the entry binds `UI_SHORTCUT_PRIMARY` and
+`UI_SHORTCUT_NEGATIVE` and nothing else, and the chat system is already eating directional input. A
+watchdog takes the layer down on any tick that finds the entry closed, because a layer left pushed
+*is* the 1.8.0 failure.
+
+**Only L3 is bound.** L2 is never declared as an action anywhere, so it is never shadowed. What
+the chord needs is whether the trigger is pulled at the moment L3 goes down, and
+`GetGamepadLeftTriggerMagnitude()` answers that on the spot — which also removes the chord latch
+and the polling that existed only because analogue triggers do not report their release reliably.
+There is no release to miss when each press is judged by itself.
+
 **The lesson worth keeping:** every entry above is a measurement, and measurements are sound. The
 sentence that was wrong was the one that generalised from them without being measured itself.
 

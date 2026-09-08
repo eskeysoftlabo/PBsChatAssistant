@@ -22,16 +22,18 @@
 			</Action>
 		</Category>
 	</Layer>
-	<!-- Channel switching from the controller, live only while the chat entry is open.
+	<!-- Channel switching from L2+L3, live only while the chat entry is open.
 	     
 	     1.8.0 put a layer like this on the hud scene, so it shadowed L2 for the whole of play and
-	     blocking stopped working. The button was not the mistake; the timing was. A layer pushed
+	     blocking stopped working. The buttons were not the mistake; the timing was. A layer pushed
 	     only while the player is typing costs nothing, because nothing else on the pad is wanted
-	     then: the entry binds UI_SHORTCUT_PRIMARY and UI_SHORTCUT_NEGATIVE and that is all, so L1
-	     and R1 are free, and the chat system is already eating directional input so the player
-	     cannot move either way.
+	     then: the entry binds UI_SHORTCUT_PRIMARY and UI_SHORTCUT_NEGATIVE and that is all.
 	     
-	     No chord needed at that point, so there is none. One button each way.
+	     Only L3 is declared here. L2 is never bound, anywhere: what the chord needs to know is
+	     whether the trigger is pulled at the moment L3 goes down, and that is a question
+	     GetGamepadLeftTriggerMagnitude answers on the spot. So there is no second action to
+	     shadow L2 with, no chord state to latch, and no polling to notice a release that analogue
+	     triggers do not report reliably. Each L3 press is decided on its own.
 	     
 	     allowFallthrough stays true. False means a layer blocks every action it does not declare,
 	     which here would take submit and cancel with it.
@@ -41,11 +43,8 @@
 	     trusted. -->
 	<Layer name="PBsChatAssistantChatChannelLayer" allowFallthrough="true">
 		<Category>
-			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_NEXT" inheritsBindFrom="UI_SHORTCUT_RIGHT_SHOULDER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
-				<Down>PBS_CHAT_ASSISTANT:CycleChannel(1, true)</Down>
-			</Action>
-			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_PREV" inheritsBindFrom="UI_SHORTCUT_LEFT_SHOULDER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
-				<Down>PBS_CHAT_ASSISTANT:CycleChannel(-1, true)</Down>
+			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_CHORD" inheritsBindFrom="UI_SHORTCUT_LEFT_STICK" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>PBS_CHAT_ASSISTANT:OnChannelChord()</Down>
 			</Action>
 		</Category>
 	</Layer>
