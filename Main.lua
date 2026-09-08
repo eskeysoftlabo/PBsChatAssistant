@@ -777,13 +777,6 @@ local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
 -- enough to be deliberate and short of where the trigger stops.
 local TRIGGER_PULLED = 0.5
 
--- L3 went down. Whether that means anything depends on L2, asked right now.
---
--- L2 is never bound. Binding it would mean shadowing it, which is the whole reason 1.8.0 had to be
--- withdrawn, and it would buy nothing: the trigger's position is readable on demand, so the chord
--- can be decided inside L3's own handler. Nothing is latched and nothing is polled, which also
--- sidesteps analogue triggers not reporting their release reliably -- there is no release to miss
--- when each press is judged by itself.
 -- L2 and L3 observed separately, the chord composed here.
 --
 -- This is 1.8.0's shape, kept because 1.8.0's declaration is what demonstrably delivered these
@@ -842,52 +835,6 @@ local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
 -- How far the trigger counts as pulled. Analogue, so it needs a line drawn somewhere; half is far
 -- enough to be deliberate and short of where the trigger stops.
 local TRIGGER_PULLED = 0.5
-
--- L3 went down. Whether that means anything depends on L2, asked right now.
---
--- L2 is never bound. Binding it would mean shadowing it, which is the whole reason 1.8.0 had to be
--- withdrawn, and it would buy nothing: the trigger's position is readable on demand, so the chord
--- can be decided inside L3's own handler. Nothing is latched and nothing is polled, which also
--- sidesteps analogue triggers not reporting their release reliably -- there is no release to miss
--- when each press is judged by itself.
--- Diagnostic twin of OnChannelChord, on L2. Writes a line and does nothing else. See the comment
--- beside PBSCHATASSISTANT_ENTRY_CHANNEL_PROBE in Bindings.xml.
-function addon:OnChannelProbe()
-	self:Log("L2 reached the layer")
-end
-
-function addon:OnChannelChord()
-	if not self.sv or not self.sv.enabled or not self.sv.entryChannelLayer then
-		return
-	end
-
-	if type(GetGamepadLeftTriggerMagnitude) ~= "function" then
-		self:Log("L3: no trigger read on this client")
-		return
-	end
-
-	local pull = GetGamepadLeftTriggerMagnitude()
-
-	-- Logged before any of the tests below, so the log distinguishes the three ways this can come
-	-- to nothing: no line at all means L3 never reached the add-on and the binding is the problem;
-	-- a line with a low pull means the trigger is not being seen; a line with entry false means
-	-- the layer outlived the box it belongs to.
-	self:Log("L3 pull %s entry %s", tostring(pull), tostring(IsTextEntryOpen()))
-
-	-- No check on the entry being open, and none on the edit control having focus.
-	--
-	-- The layer is only pushed while the entry is open, so being called at all already means the
-	-- state is right, and re-testing it here only added a second way to fail silently. Focus was
-	-- never tested and should not be: the box can be open with focus elsewhere, and the channel is
-	-- still worth changing there.
-	if type(pull) ~= "number" or pull < TRIGGER_PULLED then
-		-- L3 on its own. Left alone deliberately: the layer allows fallthrough, so whatever else
-		-- wants the stick click is welcome to it.
-		return
-	end
-	-- Suppressed alert: the entry's own channel label is already on screen and updates itself.
-	self:CycleChannel(1, true)
-end
 
 -- nil until tried, then true or false for good.
 local layerPushWorks = nil
