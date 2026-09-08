@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.11.0"
+local VERSION = "1.11.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -784,22 +784,28 @@ function addon:OnChannelChord()
 		return
 	end
 
-	if not IsTextEntryOpen() then
-		return
-	end
-
 	if type(GetGamepadLeftTriggerMagnitude) ~= "function" then
+		self:Log("L3: no trigger read on this client")
 		return
 	end
 
 	local pull = GetGamepadLeftTriggerMagnitude()
+
+	-- Logged before any of the tests below, so the log distinguishes the three ways this can come
+	-- to nothing: no line at all means L3 never reached the add-on and the binding is the problem;
+	-- a line with a low pull means the trigger is not being seen; a line with entry false means
+	-- the layer outlived the box it belongs to.
+	self:Log("L3 pull %s entry %s", tostring(pull), tostring(IsTextEntryOpen()))
+
+	if not IsTextEntryOpen() then
+		return
+	end
+
 	if type(pull) ~= "number" or pull < TRIGGER_PULLED then
 		-- L3 on its own. Left alone deliberately: the layer allows fallthrough, so whatever else
 		-- wants the stick click is welcome to it.
 		return
 	end
-
-	self:Log("L2+L3")
 	-- Suppressed alert: the entry's own channel label is already on screen and updates itself.
 	self:CycleChannel(1, true)
 end
@@ -834,9 +840,11 @@ function addon:SetChannelLayer(wanted)
 			self:Log("channel layer push: %s", tostring(layerPushWorks))
 		else
 			PushActionLayerByName(LAYER_NAME)
+			self:Log("channel layer up")
 		end
 	elseif not wanted and active then
 		RemoveActionLayerByName(LAYER_NAME)
+		self:Log("channel layer down")
 	end
 end
 
