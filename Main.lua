@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.12.1"
+local VERSION = "1.12.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -784,6 +784,12 @@ local TRIGGER_PULLED = 0.5
 -- can be decided inside L3's own handler. Nothing is latched and nothing is polled, which also
 -- sidesteps analogue triggers not reporting their release reliably -- there is no release to miss
 -- when each press is judged by itself.
+-- Diagnostic twin of OnChannelChord, on L2. Writes a line and does nothing else. See the comment
+-- beside PBSCHATASSISTANT_ENTRY_CHANNEL_PROBE in Bindings.xml.
+function addon:OnChannelProbe()
+	self:Log("L2 reached the layer")
+end
+
 function addon:OnChannelChord()
 	if not self.sv or not self.sv.enabled or not self.sv.entryChannelLayer then
 		return

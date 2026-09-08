@@ -46,6 +46,20 @@
 			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_CHORD" inheritsBindFrom="UI_SHORTCUT_LEFT_STICK" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
 				<Down>PBS_CHAT_ASSISTANT:OnChannelChord()</Down>
 			</Action>
+			<!-- Diagnostic only, and it does nothing but write a log line.
+			     
+			     Everything measurable says the L3 action above should fire: registered, bound to
+			     key 129, in a layer confirmed active and innermost, carried by a fragment. It does
+			     not. So the question is whether this layer delivers anything at all, and L2 is the
+			     one button known to be reachable from a layer of ours: shadowing it is what broke
+			     blocking in 1.8.0.
+			     
+			     If L2 logs and L3 does not, the layer works and key 129 is being taken before UI
+			     actions see it. If neither logs, the layer delivers nothing and the fault is
+			     nearer home. Removed either way once it has answered. -->
+			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_PROBE" inheritsBindFrom="UI_SHORTCUT_LEFT_TRIGGER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>PBS_CHAT_ASSISTANT:OnChannelProbe()</Down>
+			</Action>
 		</Category>
 	</Layer>
 </Bindings>
