@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.12.0"
+local VERSION = "1.12.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1082,14 +1082,21 @@ function addon:PrintBinds()
 		return
 	end
 
+	-- The chord action and the stock action it inherits from, side by side. Between them they say
+	-- which of the three remaining possibilities is true: the action never registered, so
+	-- Bindings.xml did not take; it registered with no bind, so the inheritance did not attach;
+	-- or the source itself is unbound on this platform, in which case inheriting it was always
+	-- going to inherit nothing.
 	local actions = {
+		"PBSCHATASSISTANT_ENTRY_CHANNEL_CHORD",
+		"UI_SHORTCUT_LEFT_STICK",
+		"UI_SHORTCUT_LEFT_TRIGGER",
 		"PBSCHATASSISTANT_CHANNEL_NEXT",
-		"PBSCHATASSISTANT_CHANNEL_PREV",
 		"PBSCHATASSISTANT_START_CHAT",
 	}
 
 	for _, actionName in ipairs(actions) do
-		local shortName = actionName:gsub("^PBSCHATASSISTANT_", "")
+		local shortName = actionName:gsub("^PBSCHATASSISTANT_", ""):gsub("^UI_SHORTCUT_", "UI:")
 		local layerIndex, categoryIndex, actionIndex = GetActionIndicesFromName(actionName)
 
 		if not layerIndex then
