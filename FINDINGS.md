@@ -152,6 +152,21 @@ the chord needs is whether the trigger is pulled at the moment L3 goes down, and
 and the polling that existed only because analogue triggers do not report their release reliably.
 There is no release to miss when each press is judged by itself.
 
+### A layer being active is not the same as its actions being bound
+
+`PushActionLayerByName` works from an add-on, and `IsActionLayerActiveByName` agrees afterwards.
+`/pbchat layers` showed the layer active and innermost, above the general layer, with
+`GamepadChatSystem` not even on the stack — and the action never fired. Forced up on the HUD,
+where 1.8.0 had already proved the same `inheritsBindFrom` delivers, still nothing.
+
+**An inherited bind attaches when the layer arrives through a `ZO_ActionLayerFragment`. Pushing
+the same layer by name produces a layer with no binds in it** — active, topmost, and inert, which
+is the worst combination to debug because every reading says it should be working.
+
+So the fragment is the mechanism, and the scoping is done by adding and removing it from the `hud`
+scene rather than by choosing when to push. 1.8.0 left the fragment in place, which is why it
+shadowed a button for the whole of play.
+
 **The lesson worth keeping:** every entry above is a measurement, and measurements are sound. The
 sentence that was wrong was the one that generalised from them without being measured itself.
 

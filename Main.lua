@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.11.2"
+local VERSION = "1.12.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -827,33 +827,52 @@ local function IsLayerActive()
 	return type(IsActionLayerActiveByName) == "function" and IsActionLayerActiveByName(LAYER_NAME)
 end
 
+-- Carried by a scene fragment, not pushed by name.
+--
+-- PushActionLayerByName works -- IsActionLayerActiveByName agreed, and /pbchat layers showed the
+-- layer active and innermost, above the general layer, with GamepadChatSystem not even on the
+-- stack. The action still never fired. Measured with the layer forced up on the HUD, where 1.8.0
+-- had proved the same inheritsBindFrom does deliver: still nothing.
+--
+-- So a layer being active and its actions being bound are two different things. An inherited bind
+-- attaches when the layer arrives through a fragment; pushing the same layer by name gets a layer
+-- with no binds in it, which is exactly as useless as it is invisible.
+--
+-- The fragment lives on the hud scene, added and removed to follow the chat box rather than left
+-- in place. 1.8.0 left it in place, which is how it shadowed a button for the whole of play.
+local channelFragment = nil
+local channelFragmentAdded = false
+
+local function GetHudScene()
+	return type(SCENE_MANAGER) == "table" and SCENE_MANAGER:GetScene("hud")
+end
+
 function addon:SetChannelLayer(wanted)
 	if layerPushWorks == false then
 		return
 	end
 
-	if type(PushActionLayerByName) ~= "function" or type(RemoveActionLayerByName) ~= "function" then
+	local scene = GetHudScene()
+	if not scene or type(ZO_ActionLayerFragment) ~= "table" then
 		layerPushWorks = false
 		return
 	end
 
-	local active = IsLayerActive()
-
-	if wanted and not active then
-		if layerPushWorks == nil then
-			-- Assumed failed before the call, not after. A restricted call cannot be caught, and
-			-- this runs from a repeating tick: if it throws with the flag still unset, it throws
-			-- again on the next tick, and every tick after. Set first and the throw is once.
-			layerPushWorks = false
-			PushActionLayerByName(LAYER_NAME)
-			layerPushWorks = IsLayerActive() and true or false
-			self:Log("channel layer push: %s", tostring(layerPushWorks))
-		else
-			PushActionLayerByName(LAYER_NAME)
-			self:Log("channel layer up")
+	if not channelFragment then
+		channelFragment = ZO_ActionLayerFragment:New(LAYER_NAME)
+		layerPushWorks = channelFragment and true or false
+		if not channelFragment then
+			return
 		end
-	elseif not wanted and active then
-		RemoveActionLayerByName(LAYER_NAME)
+	end
+
+	if wanted and not channelFragmentAdded then
+		channelFragmentAdded = true
+		scene:AddFragment(channelFragment)
+		self:Log("channel layer up")
+	elseif not wanted and channelFragmentAdded then
+		channelFragmentAdded = false
+		scene:RemoveFragment(channelFragment)
 		self:Log("channel layer down")
 	end
 end
