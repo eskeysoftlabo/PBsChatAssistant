@@ -85,7 +85,8 @@ local DEFAULTS = {
 	watch = true,
 	autoSafe = true,
 	channelKeys = true,
-	entryChannelLayer = true,
+	entryChannelLayer = true, -- legacy setting
+	hudChannelEnabled = true,
 	followInput = false,
 	idleSeconds = 15,
 	logResetDone = false,
@@ -126,7 +127,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.13.1"
+local VERSION = "1.14.1"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -336,6 +337,31 @@ end
 -- This costs the gamepad nothing it was not already costing. The arrows are read by the same
 -- catcher that reads Enter, which is up only when Enter is armed, so a build with the channel
 -- keys behaves exactly like one without until /pbchat enter is used.
+local function IsUsableChannelName(name)
+	return type(name) == "string" and name ~= "" and name ~= "nil"
+end
+
+function addon:GetChannelDisplayName(channelId)
+	if channelId == nil then return "--" end
+	local info = type(ZO_ChatSystem_GetChannelInfo) == "function" and ZO_ChatSystem_GetChannelInfo()
+	local data = info and info[channelId]
+	-- Guild and officer channels have dynamicName=true and no fixed name.
+	if data and data.dynamicName and type(GetDynamicChatChannelName) == "function" then
+		local ok, name = pcall(GetDynamicChatChannelName, channelId)
+		if ok and IsUsableChannelName(name) then return name end
+	end
+	if type(GetChannelName) == "function" then
+		local ok, name = pcall(GetChannelName, channelId)
+		if ok and IsUsableChannelName(name) then return name end
+	end
+	if data and IsUsableChannelName(data.name) then return data.name end
+	-- Membership information may not yet be available immediately after a load.
+	local switches = type(ZO_ChatSystem_GetChannelSwitchLookupTable) == "function"
+		and ZO_ChatSystem_GetChannelSwitchLookupTable()
+	local switch = switches and switches[channelId]
+	return IsUsableChannelName(switch) and switch or tostring(channelId)
+end
+
 local function GetCyclableChannels()
 	if type(ZO_ChatSystem_GetChannelInfo) ~= "function"
 		or type(ZO_ChatSystem_GetChannelSwitchLookupTable) ~= "function" then
@@ -355,7 +381,7 @@ local function GetCyclableChannels()
 		local needsTarget = data.saveTarget ~= nil
 
 		if switch and available and not needsTarget then
-			channels[#channels + 1] = { id = channelId, switch = switch, name = data.name }
+			channels[#channels + 1] = { id = channelId, switch = switch, name = addon:GetChannelDisplayName(channelId) }
 		end
 	end
 
@@ -694,16 +720,6 @@ function addon:OnWatchTick()
 		self:Log("input screen up -- catcher down, gamepad back")
 	end
 
-	-- Up only while the entry is open, and taken down the moment it is not. The second half is
-	-- the safety: this runs whether or not the feature is switched on, so turning it off, or a
-	-- push that outlives whatever put it there, cannot leave the layer standing.
-	-- forceLayer is a test switch, not a feature. It holds the layer up regardless of the chat
-	-- box, to answer one question: the layer is confirmed active and topmost while the entry is
-	-- open, and L3 still does not reach the handler, so is it the layer that is not delivering, or
-	-- the state it is being used in? 1.8.0 proved the same inheritsBindFrom does deliver on the
-	-- HUD. See /pbchat forcelayer.
-	self:SetChannelLayer(forceLayer or (self.sv.entryChannelLayer and IsTextEntryOpen()))
-
 	-- Our own open is mid-flight; it will produce the screen by itself.
 	if openPending then
 		return
@@ -751,148 +767,6 @@ function addon:ApplyWatch()
 		return
 	end
 
-	-- The tick is what takes the channel layer down again, so stopping the tick has to take it
-	-- down here instead. Otherwise turning the watcher off while typing would leave the layer
-	-- standing with nothing left running to notice -- which is the 1.8.0 failure by another road.
-	self:SetChannelLayer(false)
-end
-
-----------------------------------------------------------------------------------------------
--- The chat-entry channel layer
-----------------------------------------------------------------------------------------------
-
--- L2 and L3 observed separately, the chord composed here.
---
--- This is 1.8.0's shape, kept because 1.8.0's declaration is what demonstrably delivered these
--- buttons. Both are declared, both report Down and Up, and the handlers return, all of which
--- differed in the versions that measured perfect and did nothing.
---
--- Held state rather than reading the trigger on demand: the earlier design asked
--- GetGamepadLeftTriggerMagnitude inside L3's handler, which is tidier and needs L3 to arrive,
--- which is the thing that was not happening. Either button arriving is enough to prove the layer
--- delivers at all.
-local chordButtons = {}
-local chordLatched = false
-
-function addon:OnChordButton(button, down)
-	self:Log("chord %s %s", button, down and "down" or "up")
-
-	if not down then
-		chordButtons[button] = nil
-		if not chordButtons.L2 and not chordButtons.L3 then
-			chordLatched = false
-		end
-		return false
-	end
-
-	chordButtons[button] = true
-
-	if chordButtons.L2 and chordButtons.L3 and not chordLatched then
-		chordLatched = true
-		if self.sv and self.sv.enabled and self.sv.entryChannelLayer then
-			-- Suppressed alert: the entry's own channel label is on screen and updates itself.
-			self:CycleChannel(1, true)
-		end
-	end
-
-	-- Never consumed. The layer allows fallthrough and these handlers decline the input, so
-	-- whatever else wants L2 or L3 is welcome to it.
-	return false
-end
-
-----------------------------------------------------------------------------------------------
--- The chat-entry channel layer
-----------------------------------------------------------------------------------------------
-
--- L2+L3 walks the channel, from the controller, while the chat entry is open.
---
--- The layer is declared in Bindings.xml and carried by a fragment for only as long as the entry is
--- open. That scoping is the whole design. 1.8.0 left an equivalent fragment on the hud scene for
--- the whole of play, where it shadowed L2 and blocking silently stopped working. While the player
--- is typing there is nothing to shadow.
---
--- A fragment left in place recreates that failure exactly, so it is watched rather than trusted:
--- every tick that finds the entry closed and the layer up takes the layer down.
-local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
-
--- nil until tried, then true or false for good.
-local layerPushWorks = nil
-
--- Test switch. Never persisted, so it cannot survive a reload and be forgotten.
-local forceLayer = false
-
-local function IsLayerActive()
-	return type(IsActionLayerActiveByName) == "function" and IsActionLayerActiveByName(LAYER_NAME)
-end
-
--- Carried by a scene fragment, not pushed by name.
---
--- PushActionLayerByName works -- IsActionLayerActiveByName agreed, and /pbchat layers showed the
--- layer active and innermost, above the general layer, with GamepadChatSystem not even on the
--- stack. The action still never fired. Measured with the layer forced up on the HUD, where 1.8.0
--- had proved the same inheritsBindFrom does deliver: still nothing.
---
--- So a layer being active and its actions being bound are two different things. An inherited bind
--- attaches when the layer arrives through a fragment; pushing the same layer by name gets a layer
--- with no binds in it, which is exactly as useless as it is invisible.
---
--- The fragment lives on the hud scene, added and removed to follow the chat box rather than left
--- in place. 1.8.0 left it in place, which is how it shadowed a button for the whole of play.
-local channelFragment = nil
-local channelFragmentAdded = false
-
--- One scene, and the fragment made early.
---
--- Both of those are 1.8.0's shape, and 1.8.0 is the only version that ever delivered these
--- buttons. Two departures from it had crept in and neither was measured:
---
---   hudui as well as hud. One fragment registered on two scenes is not obviously safe: opening
---   the chat box moves the base scene from one to the other, so the leaving scene hides the
---   fragment while the arriving scene shows it, and whichever call lands last decides. A fragment
---   that ends hidden explains everything seen here, including IsActionLayerActiveByName saying
---   the layer is active, which it also said for a name-pushed layer that had no working binds.
---
---   Created lazily inside a tick, rather than on EVENT_PLAYER_ACTIVATED before anything asks for
---   it.
---
--- So: hud only, built at activation, and the only thing left that differs from 1.8.0 is when it is
--- added and removed. That is the part worth keeping, because it is what stops the layer shadowing
--- a button for the whole of play.
-local channelFragment = nil
-local channelFragmentAdded = false
-
-local function GetChannelScene()
-	return type(SCENE_MANAGER) == "table" and SCENE_MANAGER:GetScene("hud")
-end
-
-function addon:InitChannelLayer()
-	if channelFragment or type(ZO_ActionLayerFragment) ~= "table" then
-		return
-	end
-	channelFragment = ZO_ActionLayerFragment:New(LAYER_NAME)
-	layerPushWorks = channelFragment and true or false
-end
-
-function addon:SetChannelLayer(wanted)
-	if not channelFragment then
-		return
-	end
-
-	local scene = GetChannelScene()
-	if not scene then
-		return
-	end
-
-	if wanted and not channelFragmentAdded then
-		channelFragmentAdded = true
-		scene:AddFragment(channelFragment)
-		self:Log("channel layer up (scene %s, active %s)",
-			tostring(SCENE_MANAGER:GetCurrentSceneName()), tostring(IsLayerActive()))
-	elseif not wanted and channelFragmentAdded then
-		channelFragmentAdded = false
-		scene:RemoveFragment(channelFragment)
-		self:Log("channel layer down")
-	end
 end
 
 ----------------------------------------------------------------------------------------------
@@ -1072,8 +946,7 @@ function addon:PrintStatus()
 	Print("input type: %s, follow %s, trigger %s", IsGamepadInput() and "gamepad" or "keyboard",
 		tostring(self.sv.followInput), tostring(self.sv.triggerOnKeyboard))
 	Print("catcher shown: %s, keyboard active: %s", tostring(IsCatcherShown()), tostring(keyboardActive))
-	Print("entry channel layer %s, active %s, push works %s", tostring(self.sv.entryChannelLayer),
-		tostring(IsLayerActive()), tostring(layerPushWorks))
+	if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:PrintStatus() end
 	Print("watch %s, auto safe %s, edit focus %s, input screen %s", tostring(self.sv.watch),
 		tostring(self.sv.autoSafe), tostring(HasEditFocus()), tostring(IsInputScreenUp()))
 end
@@ -1106,7 +979,7 @@ function addon:PrintBinds()
 	-- or the source itself is unbound on this platform, in which case inheriting it was always
 	-- going to inherit nothing.
 	local actions = {
-		"PBSCHATASSISTANT_ENTRY_CHANNEL_CHORD",
+		"PBSCHATASSISTANT_HUD_CHANNEL_L3",
 		"UI_SHORTCUT_LEFT_STICK",
 		"UI_SHORTCUT_LEFT_TRIGGER",
 		"PBSCHATASSISTANT_CHANNEL_NEXT",
@@ -1236,19 +1109,17 @@ function addon:InitSlashCommand()
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
 		elseif command == "forcelayer" then
-			forceLayer = (argument ~= "off")
-			-- Not saved on purpose: it shadows L3 outside the chat box, and a test switch that
-			-- survives a reload is a bug waiting to be blamed on something else.
-			Print("force layer %s (test only, not saved, shadows L3)", forceLayer and "on" or "off")
-			self:SetChannelLayer(forceLayer or (self.sv.entryChannelLayer and IsTextEntryOpen()))
+			Print("force layer is disabled; hold L2 on the HUD to enable the L3 channel shortcut")
+		elseif command == "hudstatus" then
+			if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:PrintStatus() end
 		elseif command == "layers" then
 			self:PrintLayers()
 		elseif command == "binds" then
 			self:PrintBinds()
-		elseif command == "entrychannel" then
-			self.sv.entryChannelLayer = (argument ~= "off")
-			self:SetChannelLayer(false)
-			Print("L1/R1 channel switching while typing %s", self.sv.entryChannelLayer and "on" or "off")
+		elseif command == "hudchannel" or command == "entrychannel" then
+			self.sv.hudChannelEnabled = (argument ~= "off")
+			if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:Update() end
+			Print("HUD L2+L3 channel switching %s", self.sv.hudChannelEnabled and "on" or "off")
 		elseif command == "channel" then
 			self.sv.channelKeys = (argument ~= "off")
 			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
@@ -1381,12 +1252,6 @@ local function OnAddOnLoaded(_, name)
 	-- The cost is that the buttons are dead while the player is at the keyboard, and that the
 	-- first key of a session opens the box whatever key it was. /pbchat follow off and
 	-- /pbchat trigger off turn those two off separately.
-	-- Built here rather than on first use, matching 1.8.0, which made its fragment as soon as the
-	-- player was in the world.
-	em:RegisterForEvent(addon.name, EVENT_PLAYER_ACTIVATED, function()
-		addon:InitChannelLayer()
-	end)
-
 	em:RegisterForEvent(addon.name, EVENT_INPUT_TYPE_CHANGED, function(_, isGamepad)
 		addon:Log("input type -> %s, entry %s", isGamepad and "gamepad" or "keyboard",
 			tostring(IsTextEntryOpen()))

@@ -22,31 +22,13 @@
 			</Action>
 		</Category>
 	</Layer>
-	<!-- Channel switching from L2+L3, live only while the chat entry is open.
-	     
-	     This block is 1.8.0's declaration, restored verbatim in shape: same layer name, same two
-	     actions, same attributes, both Down and Up, handlers returning. That version demonstrably
-	     delivered these buttons. Every variation tried since did not, while measuring as though it
-	     should: registered, bound to the same key as the inherit source, layer active and innermost
-	     of three, and still nothing arriving. So the declaration goes back to the one known to
-	     work, and the only remaining difference is scope.
-	     
-	     Scope is what 1.8.0 got wrong. Its fragment sat on the hud scene for the whole of play, so
-	     it shadowed L2 and blocking stopped working. Here the fragment is added only while the
-	     chat box is open, and to hudui as well as hud, since opening the box moves the base scene
-	     there. While the player is typing there is nothing to shadow.
-	     
-	     allowFallthrough stays true. False means a layer blocks every action it does not declare,
-	     which here would take submit and cancel with it. -->
+	<!-- L2 is read through its analog API and is NEVER declared as an action.
+         This layer exists only on HUD while L2 is held; otherwise L3 is untouched. -->
 	<Layer name="PBsChatAssistantHUDChannelLayer" allowFallthrough="true">
 		<Category>
 			<Action name="PBSCHATASSISTANT_HUD_CHANNEL_L3" inheritsBindFrom="UI_SHORTCUT_LEFT_STICK" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
-				<Down>return PBS_CHAT_ASSISTANT:OnChordButton("L3", true)</Down>
-				<Up>return PBS_CHAT_ASSISTANT:OnChordButton("L3", false)</Up>
-			</Action>
-			<Action name="PBSCHATASSISTANT_HUD_CHANNEL_L2" inheritsBindFrom="UI_SHORTCUT_LEFT_TRIGGER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
-				<Down>return PBS_CHAT_ASSISTANT:OnChordButton("L2", true)</Down>
-				<Up>return PBS_CHAT_ASSISTANT:OnChordButton("L2", false)</Up>
+				<Down>return PBS_CHAT_ASSISTANT_HUD_CHANNEL:OnL3Down()</Down>
+				<Up>return PBS_CHAT_ASSISTANT_HUD_CHANNEL:OnL3Up()</Up>
 			</Action>
 		</Category>
 	</Layer>

@@ -1,5 +1,34 @@
 # Platform findings — ESO on console (PS5)
 
+## 2026-09-09: source audit and 1.14.0 (pending PS5 validation)
+
+The latest user report is that 1.13.1 catches neither button. Earlier claims below that the
+entry-only approach works must not be treated as verified success.
+
+Source defects confirmed:
+
+- The HUD loop enables the layer only when the text entry is open; closed-HUD switching is excluded.
+- OnWatchTick references forceLayer before its local declaration. Lua resolves that reference as a
+  global, so the slash command's local flag is not the flag the watcher reads.
+- channelFragment and channelFragmentAdded are declared twice; the latter locals shadow the former.
+- PrintBinds queries PBSCHATASSISTANT_ENTRY_CHANNEL_CHORD, which the supplied Bindings.xml does not declare.
+- README says L2 is not bound, but supplied Bindings.xml explicitly binds UI_SHORTCUT_LEFT_TRIGGER.
+
+The claim below that fragments uniquely attach inherited bindings is an inference, not established
+by the cited observations. The published ZO_ActionLayerFragment:Show itself calls
+PushActionLayerByName; lifecycle, ordering, scene state and variable scope must also be considered.
+
+1.14.0 removes the old entry-only machinery. A separate 10ms HUD loop reads L2 analog magnitude,
+adds a fragment containing ONLY L3 while L2 is held, and removes it on release or on leaving HUD.
+Each L3 Down reads L2 again, with no Up-dependent latch. No L2 binding and no private key-state or
+binding APIs are used. L3 is intentionally reassigned only during the modifier hold.
+
+Local tests cover lifecycle, missed Up notifications, repeated L3 events, analog API rejection,
+menus, text entry, capture conflicts and master/feature toggles. They do not emulate native engine
+input dispatch, prove that blocking is preserved on PS5, or prove that L3 will arrive in this new scope.
+
+---
+
 What was measured on the way to this add-on, and what each measurement rules in or out. Almost
 none of it is written down anywhere else, and several entries contradict `ESOUIDocumentation.txt`.
 
