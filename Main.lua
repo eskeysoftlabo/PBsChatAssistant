@@ -126,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.11.1"
+local VERSION = "1.11.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -697,7 +697,12 @@ function addon:OnWatchTick()
 	-- Up only while the entry is open, and taken down the moment it is not. The second half is
 	-- the safety: this runs whether or not the feature is switched on, so turning it off, or a
 	-- push that outlives whatever put it there, cannot leave the layer standing.
-	self:SetChannelLayer(self.sv.entryChannelLayer and IsTextEntryOpen())
+	-- forceLayer is a test switch, not a feature. It holds the layer up regardless of the chat
+	-- box, to answer one question: the layer is confirmed active and topmost while the entry is
+	-- open, and L3 still does not reach the handler, so is it the layer that is not delivering, or
+	-- the state it is being used in? 1.8.0 proved the same inheritsBindFrom does deliver on the
+	-- HUD. See /pbchat forcelayer.
+	self:SetChannelLayer(forceLayer or (self.sv.entryChannelLayer and IsTextEntryOpen()))
 
 	-- Our own open is mid-flight; it will produce the screen by itself.
 	if openPending then
@@ -814,6 +819,9 @@ end
 
 -- nil until tried, then true or false for good.
 local layerPushWorks = nil
+
+-- Test switch. Never persisted, so it cannot survive a reload and be forgotten.
+local forceLayer = false
 
 local function IsLayerActive()
 	return type(IsActionLayerActiveByName) == "function" and IsActionLayerActiveByName(LAYER_NAME)
@@ -1183,6 +1191,12 @@ function addon:InitSlashCommand()
 			self.sv.captureMode = "off"
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
+		elseif command == "forcelayer" then
+			forceLayer = (argument ~= "off")
+			-- Not saved on purpose: it shadows L3 outside the chat box, and a test switch that
+			-- survives a reload is a bug waiting to be blamed on something else.
+			Print("force layer %s (test only, not saved, shadows L3)", forceLayer and "on" or "off")
+			self:SetChannelLayer(forceLayer or (self.sv.entryChannelLayer and IsTextEntryOpen()))
 		elseif command == "layers" then
 			self:PrintLayers()
 		elseif command == "binds" then
