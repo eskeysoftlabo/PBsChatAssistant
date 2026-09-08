@@ -22,14 +22,31 @@
 			</Action>
 		</Category>
 	</Layer>
-	<!-- The HUD channel layer that lived here is withdrawn.
+	<!-- Channel switching from the controller, live only while the chat entry is open.
 	     
-	     It inherited its binds from UI_SHORTCUT_LEFT_TRIGGER and UI_SHORTCUT_LEFT_STICK so that
-	     L2+L3 could be composed in Lua, and it worked. What it also did was shadow L2 on the HUD,
-	     so blocking stopped working. allowFallthrough="true" with handlers returning false was not
-	     enough to keep the game's own L2 alive underneath it.
+	     1.8.0 put a layer like this on the hud scene, so it shadowed L2 for the whole of play and
+	     blocking stopped working. The button was not the mistake; the timing was. A layer pushed
+	     only while the player is typing costs nothing, because nothing else on the pad is wanted
+	     then: the entry binds UI_SHORTCUT_PRIMARY and UI_SHORTCUT_NEGATIVE and that is all, so L1
+	     and R1 are free, and the chat system is already eating directional input so the player
+	     cannot move either way.
 	     
-	     Removed rather than merely left unpushed, so nothing can activate it. The implementation
-	     is kept in HUDChannel.lua, which the manifest no longer loads, and the finding is written
-	     up in FINDINGS.md. -->
+	     No chord needed at that point, so there is none. One button each way.
+	     
+	     allowFallthrough stays true. False means a layer blocks every action it does not declare,
+	     which here would take submit and cancel with it.
+	     
+	     Pushed and popped from Lua, with a watchdog that removes it whenever the entry is not
+	     open. A layer left pushed is exactly the 1.8.0 failure, so it is guarded rather than
+	     trusted. -->
+	<Layer name="PBsChatAssistantChatChannelLayer" allowFallthrough="true">
+		<Category>
+			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_NEXT" inheritsBindFrom="UI_SHORTCUT_RIGHT_SHOULDER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>PBS_CHAT_ASSISTANT:CycleChannel(1, true)</Down>
+			</Action>
+			<Action name="PBSCHATASSISTANT_ENTRY_CHANNEL_PREV" inheritsBindFrom="UI_SHORTCUT_LEFT_SHOULDER" hideAction="true" rebindable="false" preventAutomaticInputModeChange="true">
+				<Down>PBS_CHAT_ASSISTANT:CycleChannel(-1, true)</Down>
+			</Action>
+		</Category>
+	</Layer>
 </Bindings>

@@ -85,6 +85,7 @@ local DEFAULTS = {
 	watch = true,
 	autoSafe = true,
 	channelKeys = true,
+	entryChannelLayer = true,
 	followInput = false,
 	idleSeconds = 15,
 	logResetDone = false,
@@ -125,7 +126,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.9.0"
+local VERSION = "1.10.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -693,6 +694,11 @@ function addon:OnWatchTick()
 		self:Log("input screen up -- catcher down, gamepad back")
 	end
 
+	-- Up only while the entry is open, and taken down the moment it is not. The second half is
+	-- the safety: this runs whether or not the feature is switched on, so turning it off, or a
+	-- push that outlives whatever put it there, cannot leave the layer standing.
+	self:SetChannelLayer(self.sv.entryChannelLayer and IsTextEntryOpen())
+
 	-- Our own open is mid-flight; it will produce the screen by itself.
 	if openPending then
 		return
@@ -737,6 +743,64 @@ function addon:ApplyWatch()
 		em:RegisterForUpdate(updateName, WATCH_INTERVAL_MS, function()
 			self:OnWatchTick()
 		end)
+		return
+	end
+
+	-- The tick is what takes the channel layer down again, so stopping the tick has to take it
+	-- down here instead. Otherwise turning the watcher off while typing would leave the layer
+	-- standing with nothing left running to notice -- which is the 1.8.0 failure by another road.
+	self:SetChannelLayer(false)
+end
+
+----------------------------------------------------------------------------------------------
+-- The chat-entry channel layer
+----------------------------------------------------------------------------------------------
+
+-- L1 and R1 walk the channel, from the controller, while the chat entry is open.
+--
+-- The layer is declared in Bindings.xml and pushed only for as long as the entry is open. That
+-- scoping is the whole design. 1.8.0 put an equivalent layer on the hud scene, where it shadowed
+-- L2 for the whole of play and blocking silently stopped working -- an inherited bind in a pushed
+-- layer beats the gameplay action on the same button, allowFallthrough or not. While the player is
+-- typing there is no gameplay action to beat.
+--
+-- A layer left pushed by accident recreates that failure exactly, so it is watched rather than
+-- trusted: every tick that finds the entry closed and the layer up takes the layer down.
+local LAYER_NAME = "PBsChatAssistantChatChannelLayer"
+
+-- nil until tried, then true or false for good.
+local layerPushWorks = nil
+
+local function IsLayerActive()
+	return type(IsActionLayerActiveByName) == "function" and IsActionLayerActiveByName(LAYER_NAME)
+end
+
+function addon:SetChannelLayer(wanted)
+	if layerPushWorks == false then
+		return
+	end
+
+	if type(PushActionLayerByName) ~= "function" or type(RemoveActionLayerByName) ~= "function" then
+		layerPushWorks = false
+		return
+	end
+
+	local active = IsLayerActive()
+
+	if wanted and not active then
+		if layerPushWorks == nil then
+			-- Assumed failed before the call, not after. A restricted call cannot be caught, and
+			-- this runs from a repeating tick: if it throws with the flag still unset, it throws
+			-- again on the next tick, and every tick after. Set first and the throw is once.
+			layerPushWorks = false
+			PushActionLayerByName(LAYER_NAME)
+			layerPushWorks = IsLayerActive() and true or false
+			self:Log("channel layer push: %s", tostring(layerPushWorks))
+		else
+			PushActionLayerByName(LAYER_NAME)
+		end
+	elseif not wanted and active then
+		RemoveActionLayerByName(LAYER_NAME)
 	end
 end
 
@@ -897,6 +961,8 @@ function addon:PrintStatus()
 	Print("input type: %s, follow %s, trigger %s", IsGamepadInput() and "gamepad" or "keyboard",
 		tostring(self.sv.followInput), tostring(self.sv.triggerOnKeyboard))
 	Print("catcher shown: %s, keyboard active: %s", tostring(IsCatcherShown()), tostring(keyboardActive))
+	Print("entry channel layer %s, active %s, push works %s", tostring(self.sv.entryChannelLayer),
+		tostring(IsLayerActive()), tostring(layerPushWorks))
 	Print("watch %s, auto safe %s, edit focus %s, input screen %s", tostring(self.sv.watch),
 		tostring(self.sv.autoSafe), tostring(HasEditFocus()), tostring(IsInputScreenUp()))
 end
@@ -970,6 +1036,10 @@ function addon:InitSlashCommand()
 
 		if command == "on" or command == "off" then
 			self.sv.enabled = (command == "on")
+			-- The master switch has to reach everything that is running, the channel layer
+			-- included; ApplyWatch takes that down when it stops the tick.
+			self:ApplyCatcher()
+			self:ApplyWatch()
 			Print("%s", self.sv.enabled and "on" or "off")
 		elseif command == "probe" then
 			self:StartProbe(argument ~= "" and argument or "default")
@@ -1049,6 +1119,10 @@ function addon:InitSlashCommand()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
 		elseif command == "binds" then
 			self:PrintBinds()
+		elseif command == "entrychannel" then
+			self.sv.entryChannelLayer = (argument ~= "off")
+			self:SetChannelLayer(false)
+			Print("L1/R1 channel switching while typing %s", self.sv.entryChannelLayer and "on" or "off")
 		elseif command == "channel" then
 			self.sv.channelKeys = (argument ~= "off")
 			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
