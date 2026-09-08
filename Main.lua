@@ -761,22 +761,6 @@ end
 -- The chat-entry channel layer
 ----------------------------------------------------------------------------------------------
 
--- L1 and R1 walk the channel, from the controller, while the chat entry is open.
---
--- The layer is declared in Bindings.xml and pushed only for as long as the entry is open. That
--- scoping is the whole design. 1.8.0 put an equivalent layer on the hud scene, where it shadowed
--- L2 for the whole of play and blocking silently stopped working -- an inherited bind in a pushed
--- layer beats the gameplay action on the same button, allowFallthrough or not. While the player is
--- typing there is no gameplay action to beat.
---
--- A layer left pushed by accident recreates that failure exactly, so it is watched rather than
--- trusted: every tick that finds the entry closed and the layer up takes the layer down.
-local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
-
--- How far the trigger counts as pulled. Analogue, so it needs a line drawn somewhere; half is far
--- enough to be deliberate and short of where the trigger stops.
-local TRIGGER_PULLED = 0.5
-
 -- L2 and L3 observed separately, the chord composed here.
 --
 -- This is 1.8.0's shape, kept because 1.8.0's declaration is what demonstrably delivered these
@@ -820,21 +804,16 @@ end
 -- The chat-entry channel layer
 ----------------------------------------------------------------------------------------------
 
--- L1 and R1 walk the channel, from the controller, while the chat entry is open.
+-- L2+L3 walks the channel, from the controller, while the chat entry is open.
 --
--- The layer is declared in Bindings.xml and pushed only for as long as the entry is open. That
--- scoping is the whole design. 1.8.0 put an equivalent layer on the hud scene, where it shadowed
--- L2 for the whole of play and blocking silently stopped working -- an inherited bind in a pushed
--- layer beats the gameplay action on the same button, allowFallthrough or not. While the player is
--- typing there is no gameplay action to beat.
+-- The layer is declared in Bindings.xml and carried by a fragment for only as long as the entry is
+-- open. That scoping is the whole design. 1.8.0 left an equivalent fragment on the hud scene for
+-- the whole of play, where it shadowed L2 and blocking silently stopped working. While the player
+-- is typing there is nothing to shadow.
 --
--- A layer left pushed by accident recreates that failure exactly, so it is watched rather than
--- trusted: every tick that finds the entry closed and the layer up takes the layer down.
+-- A fragment left in place recreates that failure exactly, so it is watched rather than trusted:
+-- every tick that finds the entry closed and the layer up takes the layer down.
 local LAYER_NAME = "PBsChatAssistantHUDChannelLayer"
-
--- How far the trigger counts as pulled. Analogue, so it needs a line drawn somewhere; half is far
--- enough to be deliberate and short of where the trigger stops.
-local TRIGGER_PULLED = 0.5
 
 -- nil until tried, then true or false for good.
 local layerPushWorks = nil
