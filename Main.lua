@@ -127,7 +127,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.14.1"
+local VERSION = "1.14.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -341,25 +341,47 @@ local function IsUsableChannelName(name)
 	return type(name) == "string" and name ~= "" and name ~= "nil"
 end
 
+-- Officer channels answer to the same guild name as the guild channel they belong to, so without
+-- this the two are indistinguishable in the label and in the switch message: two entries reading
+-- the same guild name, one of which is not the one you meant.
+--
+-- Built rather than declared, because a table constructor with a nil key raises at load and would
+-- take the add-on down with it if any of these constants ever went missing.
+local OFFICER_CHANNELS = {}
+for _, channelId in ipairs({
+	CHAT_CHANNEL_OFFICER_1, CHAT_CHANNEL_OFFICER_2, CHAT_CHANNEL_OFFICER_3,
+	CHAT_CHANNEL_OFFICER_4, CHAT_CHANNEL_OFFICER_5,
+}) do
+	OFFICER_CHANNELS[channelId] = true
+end
+
+local function OfficerSuffix(channelId)
+	if not OFFICER_CHANNELS[channelId] then
+		return ""
+	end
+	return GetString(SI_PBSCHATASSISTANT_OFFICER_SUFFIX) or ""
+end
+
 function addon:GetChannelDisplayName(channelId)
 	if channelId == nil then return "--" end
 	local info = type(ZO_ChatSystem_GetChannelInfo) == "function" and ZO_ChatSystem_GetChannelInfo()
 	local data = info and info[channelId]
 	-- Guild and officer channels have dynamicName=true and no fixed name.
+	local suffix = OfficerSuffix(channelId)
 	if data and data.dynamicName and type(GetDynamicChatChannelName) == "function" then
 		local ok, name = pcall(GetDynamicChatChannelName, channelId)
-		if ok and IsUsableChannelName(name) then return name end
+		if ok and IsUsableChannelName(name) then return name .. suffix end
 	end
 	if type(GetChannelName) == "function" then
 		local ok, name = pcall(GetChannelName, channelId)
-		if ok and IsUsableChannelName(name) then return name end
+		if ok and IsUsableChannelName(name) then return name .. suffix end
 	end
-	if data and IsUsableChannelName(data.name) then return data.name end
+	if data and IsUsableChannelName(data.name) then return data.name .. suffix end
 	-- Membership information may not yet be available immediately after a load.
 	local switches = type(ZO_ChatSystem_GetChannelSwitchLookupTable) == "function"
 		and ZO_ChatSystem_GetChannelSwitchLookupTable()
 	local switch = switches and switches[channelId]
-	return IsUsableChannelName(switch) and switch or tostring(channelId)
+	return IsUsableChannelName(switch) and (switch .. suffix) or tostring(channelId)
 end
 
 local function GetCyclableChannels()
@@ -431,7 +453,7 @@ function addon:CycleChannel(step, suppressAlert)
 	-- An alert rather than a chat line: the box is closed, so there is nothing on screen saying
 	-- which channel is selected, and a line per key press would bury the conversation.
 	if not suppressAlert and type(ZO_Alert) == "function" then
-		ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, target.name)
+		ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, self:GetChannelDisplayName(target.id))
 	end
 end
 
