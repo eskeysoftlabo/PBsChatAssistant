@@ -797,10 +797,12 @@ function addon:OnChannelChord()
 	-- the layer outlived the box it belongs to.
 	self:Log("L3 pull %s entry %s", tostring(pull), tostring(IsTextEntryOpen()))
 
-	if not IsTextEntryOpen() then
-		return
-	end
-
+	-- No check on the entry being open, and none on the edit control having focus.
+	--
+	-- The layer is only pushed while the entry is open, so being called at all already means the
+	-- state is right, and re-testing it here only added a second way to fail silently. Focus was
+	-- never tested and should not be: the box can be open with focus elsewhere, and the channel is
+	-- still worth changing there.
 	if type(pull) ~= "number" or pull < TRIGGER_PULLED then
 		-- L3 on its own. Left alone deliberately: the layer allows fallthrough, so whatever else
 		-- wants the stick click is welcome to it.
@@ -995,6 +997,26 @@ function addon:ReportEntryState(label)
 		lastInputGamepad and "gamepad" or "keyboard")
 end
 
+-- The active action layers, outermost first.
+--
+-- Precedence is the first thing to suspect when a layer is up, its push reports working, and its
+-- action still never fires: the chat system pushes GamepadChatSystem when the entry takes focus,
+-- and a layer pushed after ours sits above it. Read-only throughout.
+function addon:PrintLayers()
+	if type(GetNumActiveActionLayers) ~= "function" then
+		Print("no action layer API on this client")
+		return
+	end
+
+	local count = GetNumActiveActionLayers()
+	Print("%d active layer(s):", count)
+	for i = 1, count do
+		local layerIndex = GetActiveActionLayerIndex(i)
+		local name = layerIndex and GetActionLayerNameByIndex(layerIndex)
+		Print("  %d: %s", i, tostring(name))
+	end
+end
+
 function addon:PrintStatus()
 	Print("%s -- %s, capture %s, delay %d ms", VERSION, self.sv.enabled and "on" or "off",
 		self:DescribeCaptureMode(), self.sv.delayMs)
@@ -1161,6 +1183,8 @@ function addon:InitSlashCommand()
 			self.sv.captureMode = "off"
 			self:ApplyCatcher()
 			Print("Enter capture OFF (catcher %s) -- gamepad buttons back", tostring(IsCatcherShown()))
+		elseif command == "layers" then
+			self:PrintLayers()
 		elseif command == "binds" then
 			self:PrintBinds()
 		elseif command == "entrychannel" then
