@@ -1,4 +1,5 @@
 -- L2 is read, never bound. Only L3 is temporarily reassigned while L2 is held on HUD.
+-- No HUD element of its own: the channel is reported to the chat log by CycleChannel.
 local NAME = "PBsChatAssistantHUDChannel"
 local LAYER = "PBsChatAssistantHUDChannelLayer"
 local channel = { layerAdded = false, downs = 0, ups = 0, changes = 0 }
@@ -48,20 +49,19 @@ function channel:SetLayer(wanted)
     end
 end
 
-function channel:RefreshLabel()
-    local chat = GetChat()
-    local id = chat and chat.currentChannel
-    local name = PBS_CHAT_ASSISTANT:GetChannelDisplayName(id)
-    local text = string.format(GetString(SI_PBSCHATASSISTANT_CHANNEL_LABEL), tostring(name or id or "--"))
-    if self.error then text = text .. "  [切替停止: /pbchat hudstatus]" end
-    if self.lastText ~= text then
-        self.label:SetText(text)
-        self.lastText = text
-    end
+-- The on-screen label is gone; the chat line in CycleChannel says the channel now. What the label
+-- also did was show that the feature had stopped, so that much is kept: an error is announced once,
+-- when it latches, rather than leaving a silent failure.
+function channel:AnnounceError()
+    if not self.error or self.errorAnnounced then return end
+    self.errorAnnounced = true
+    d(string.format("|cFF69B4PB's ChatAssistant|r: channel switching stopped (%s) -- /pbchat hudstatus",
+        tostring(self.error)))
 end
 
 function channel:Update()
     if not self.running then return end
+    self:AnnounceError()
     local available = self:IsAvailable()
     if not available or self.error then
         self.triggerHeld = false
@@ -76,8 +76,6 @@ function channel:Update()
         end
         self:SetLayer(self.triggerHeld == true)
     end
-    self.window:SetHidden(not available)
-    if available then self:RefreshLabel() end
 end
 
 function channel:OnL3Down()
@@ -99,7 +97,6 @@ function channel:OnL3Down()
     elseif chat.currentChannel ~= before then
         self.changes = self.changes + 1
     end
-    self:RefreshLabel()
     -- No release latch: every delivered Down is evaluated independently.
     -- L3 is deliberately repurposed while L2 is held; no input is synthesized.
     return true
@@ -120,23 +117,15 @@ end
 
 function channel:Start()
     if self.running then return end
-    if not self.window then
+    if not self.scene then
         self.scene = SCENE_MANAGER:GetScene("hud")
         self.fragment = ZO_ActionLayerFragment:New(LAYER)
         self.fragment:RegisterCallback("StateChange", function(_, state)
             if state == SCENE_FRAGMENT_HIDDEN then self.triggerHeld = false end
         end)
-        self.window = WINDOW_MANAGER:CreateTopLevelWindow(NAME .. "Status")
-        self.window:SetDimensions(1100, 40)
-        self.window:SetAnchor(TOP, GuiRoot, TOP, 0, 110)
-        self.window:SetMouseEnabled(false)
-        self.window:SetHidden(true)
-        self.label = WINDOW_MANAGER:CreateControl(NAME .. "Label", self.window, CT_LABEL)
-        self.label:SetAnchorFill()
-        self.label:SetFont("ZoFontGame")
-        self.label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
     end
     self.error = nil
+    self.errorAnnounced = false
     self.triggerHeld = false
     self.running = true
     self:Update()
@@ -148,7 +137,6 @@ function channel:Stop()
     self.triggerHeld = false
     EVENT_MANAGER:UnregisterForUpdate(NAME)
     self:SetLayer(false)
-    if self.window then self.window:SetHidden(true) end
 end
 
 EVENT_MANAGER:RegisterForEvent(NAME, EVENT_ADD_ON_LOADED, function(_, name)
