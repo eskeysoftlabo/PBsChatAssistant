@@ -127,7 +127,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.14.4"
+local VERSION = "1.14.5"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -448,12 +448,18 @@ function addon:CycleChannel(step, suppressAlert)
 
 	local target = channels[((index - 1 + step) % #channels) + 1]
 	chat:SetChannel(target.id)
-	self:Log("channel -> %s", tostring(target.name))
 
-	-- An alert rather than a chat line: the box is closed, so there is nothing on screen saying
-	-- which channel is selected, and a line per key press would bury the conversation.
+	-- Printed whatever the log setting says, because this one is not diagnostics: it is the
+	-- answer to "where is my next message going", and it is wanted in the chat log where it can
+	-- be scrolled back to. Resolved through GetChannelDisplayName so guild channels get their
+	-- guild name and officer channels are marked as such.
+	local displayName = self:GetChannelDisplayName(target.id)
+	Print(GetString(SI_PBSCHATASSISTANT_CHANNEL_LABEL), displayName)
+
+	-- The alert is the on-screen version, for when nothing else is showing the channel. The HUD
+	-- path suppresses it because its own label is already saying the same thing.
 	if not suppressAlert and type(ZO_Alert) == "function" then
-		ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, self:GetChannelDisplayName(target.id))
+		ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, displayName)
 	end
 end
 
