@@ -127,7 +127,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.14.3"
+local VERSION = "1.14.4"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -702,16 +702,14 @@ function addon:RefocusForInputScreen()
 		return
 	end
 
-	self:Log("refocus: closing to earn the input screen")
-
 	-- keepText is not passed, so the box is cleared. It is empty at this point by the check in
 	-- the watcher; clearing is only belt and braces.
 	chat:CloseTextEntry()
 
+	-- Not logged. The watcher runs this on every chat open, which is the most common thing the
+	-- add-on does, so the pair of lines it used to print were in the chat window constantly.
 	zo_callLater(function()
-		local opened = OpenChatEntry()
-		self:Log("refocus: reopened %s, input screen %s", tostring(opened or false),
-			tostring(IsInputScreenUp()))
+		OpenChatEntry()
 	end, self.sv.delayMs)
 end
 
