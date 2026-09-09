@@ -127,7 +127,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.14.2"
+local VERSION = "1.14.3"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1275,8 +1275,10 @@ local function OnAddOnLoaded(_, name)
 	-- first key of a session opens the box whatever key it was. /pbchat follow off and
 	-- /pbchat trigger off turn those two off separately.
 	em:RegisterForEvent(addon.name, EVENT_INPUT_TYPE_CHANGED, function(_, isGamepad)
-		addon:Log("input type -> %s, entry %s", isGamepad and "gamepad" or "keyboard",
-			tostring(IsTextEntryOpen()))
+		-- Deliberately not logged. This fires on every switch between the keyboard and the
+		-- controller, which is constantly, and with followInput and triggerOnKeyboard both off by
+		-- default the handler has nothing else to say. It was noise in the chat window and it
+		-- drowned the lines that were worth reading.
 
 		if isGamepad then
 			keyboardActive = false
