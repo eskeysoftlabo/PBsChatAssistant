@@ -130,7 +130,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.16.2"
+local VERSION = "1.17.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1183,6 +1183,22 @@ function addon:InitSlashCommand()
 			Print("force layer is disabled; hold L2 on the HUD to enable the D-pad Right channel shortcut")
 		elseif command == "hudstatus" then
 			if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:PrintStatus() end
+		elseif command == "tabprobe" then
+			-- Deliberately not a feature yet. See ChatTabs.lua: adding a tab means calling
+			-- client code that builds UI, and whether an add-on may is the one thing worth a
+			-- measurement before the guild tabs are written.
+			local chatTabs = self.chatTabs
+			if not chatTabs then
+				Print("chat tab probe not loaded")
+			elseif argument == "add" then
+				chatTabs:AddProbeTab()
+			elseif argument == "remove" then
+				chatTabs:RemoveProbeTab()
+			elseif tonumber(argument) then
+				chatTabs:SelectTab(tonumber(argument))
+			else
+				chatTabs:PrintStatus()
+			end
 		elseif command == "layers" then
 			self:PrintLayers()
 		elseif command == "binds" then
