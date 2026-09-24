@@ -102,6 +102,9 @@ local DEFAULTS = {
 	-- command rather than a build.
 	tabStripX = 0,
 	tabStripY = 110,
+	-- Set once the offsets above have been moved to the meaning they have now. See
+	-- MigrateStripPosition.
+	tabStripPlaced = false,
 	-- 0 means leave the channel wherever the game left it. Any other value is a channel id
 	-- applied once when the player enters the world; see ApplyDefaultChannel.
 	defaultChannel = 0,
@@ -145,7 +148,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.22.2"
+local VERSION = "1.23.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1432,6 +1435,9 @@ local function OnAddOnLoaded(_, name)
 	local function ScheduleTabs()
 		if addon.chatTabs then
 			addon.chatTabs:ScheduleReconcile()
+			-- Also drawn straight away: a reconcile can decline to do anything, and the strip
+			-- should still be on screen when it does.
+			addon.chatTabs:RefreshStrip()
 		end
 	end
 	em:RegisterForEvent(addon.name .. "Tabs", EVENT_PLAYER_ACTIVATED, ScheduleTabs)

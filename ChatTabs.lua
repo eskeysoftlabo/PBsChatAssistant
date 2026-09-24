@@ -320,6 +320,14 @@ function tabs:PositionStrip()
 	end
 	local x = (addon.sv and addon.sv.tabStripX) or 0
 	local y = (addon.sv and addon.sv.tabStripY) or 110
+
+	-- Clamped, because an offset that puts the strip off the screen looks exactly like a strip
+	-- that was never drawn, and that cost several rounds to tell apart. Y is measured down from
+	-- the top, so a negative one is always wrong.
+	if y < 0 then
+		y = 0
+	end
+
 	self.strip:ClearAnchors()
 	self.strip:SetAnchor(TOP, GuiRoot, TOP, x, y)
 end
@@ -347,7 +355,26 @@ function tabs:AcquireStripTab(index)
 	return entry
 end
 
+-- The offsets have meant three different things: an inset from the chat box, an offset from the
+-- bottom right of the screen, and now a position measured from the top centre. Saved values only
+-- take a default when the save is new, so a value written under the old meaning stays and is read
+-- under the new one -- which is how the strip came to be anchored 215 pixels above the top of the
+-- screen and looked, for several rounds, exactly like a strip that would not draw.
+--
+-- Moved once to the position the draw test proved visible, with a marker so a deliberate choice
+-- afterwards is left alone.
+function tabs:MigrateStripPosition()
+	if not addon.sv or addon.sv.tabStripPlaced then
+		return
+	end
+	addon.sv.tabStripPlaced = true
+	addon.sv.tabStripX = 0
+	addon.sv.tabStripY = 110
+end
+
 function tabs:RefreshStrip(container)
+	self:MigrateStripPosition()
+
 	container = container or GetContainer()
 	local strip = self:EnsureStrip()
 	if not strip then
