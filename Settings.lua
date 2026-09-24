@@ -70,23 +70,67 @@ function addon:InitSettings()
 		}
 	)
 
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_CHECKBOX,
-			label = GetString(SI_PBSCHATASSISTANT_GUILDINMAIN),
-			tooltip = GetString(SI_PBSCHATASSISTANT_GUILDINMAIN_TOOLTIP),
-			default = true,
-			getFunction = function()
-				return self.sv.guildInMainTab
-			end,
-			setFunction = function(value)
-				self.sv.guildInMainTab = value
-				if self.chatTabs then
-					self.chatTabs:Reconcile()
+	-- One row per guild slot, not one switch for all five.
+	--
+	-- The label has to say which guild it is, and guild names are not known when this panel is
+	-- built: it is created at add-on load, well before guild data arrives. So the rows are made
+	-- once with placeholder labels and their text is refreshed whenever the settings screen is
+	-- about to show. AddonSelected alone is not enough, since it does not fire when the panel is
+	-- revisited; the scene's own state change does.
+	local guildRows = {}
+	for slotIndex = 1, 5 do
+		local row = settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_CHECKBOX,
+				label = zo_strformat(GetString(SI_PBSCHATASSISTANT_GUILDINMAIN), slotIndex),
+				tooltip = GetString(SI_PBSCHATASSISTANT_GUILDINMAIN_TOOLTIP),
+				default = true,
+				getFunction = function()
+					local guildId = GetGuildId and GetGuildId(slotIndex)
+					return not self.chatTabs or self.chatTabs:IsGuildInMainTab(guildId)
+				end,
+				setFunction = function(value)
+					local guildId = GetGuildId and GetGuildId(slotIndex)
+					if guildId and self.chatTabs then
+						self.chatTabs:SetGuildInMainTab(guildId, value)
+					end
 				end
+			}
+		)
+		guildRows[slotIndex] = row
+	end
+
+	local function RefreshGuildRowLabels()
+		for slotIndex = 1, 5 do
+			local row = guildRows[slotIndex]
+			if row then
+				local guildId = GetGuildId and GetGuildId(slotIndex)
+				local name = guildId and GetGuildName and GetGuildName(guildId)
+				row.label = zo_strformat(GetString(SI_PBSCHATASSISTANT_GUILDINMAIN),
+					(name and name ~= "") and name or slotIndex)
 			end
-		}
+		end
+	end
+
+	RefreshGuildRowLabels()
+
+	CALLBACK_MANAGER:RegisterCallback(
+		"LibHarvensAddonSettings_AddonSelected",
+		function(_, addonSettings)
+			if addonSettings == settings then
+				RefreshGuildRowLabels()
+			end
+		end
 	)
+
+	local settingsScene = SCENE_MANAGER and SCENE_MANAGER:GetScene("LibHarvensAddonSettingsScene")
+	if settingsScene then
+		settingsScene:RegisterCallback("StateChange", function(_, state)
+			if state == SCENE_SHOWING then
+				RefreshGuildRowLabels()
+			end
+		end)
+	end
 
 	-- Which channel a session starts on.
 	--

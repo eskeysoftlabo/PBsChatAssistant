@@ -41,6 +41,43 @@ local function GuildCategories(index)
 	return guild[index], officer[index]
 end
 
+-- Which guilds the player is in, by slot, with the names the tabs are called after.
+function tabs:GuildSlots()
+	local slots = {}
+	local numGuilds = GetNumGuilds and GetNumGuilds() or 0
+	for guildIndex = 1, numGuilds do
+		local guildId = GetGuildId and GetGuildId(guildIndex)
+		local name = guildId and GetGuildName and GetGuildName(guildId)
+		if guildId then
+			slots[#slots + 1] = { index = guildIndex, guildId = guildId, name = name }
+		end
+	end
+	return slots
+end
+
+-- Per guild, not one switch for all of them. Missing means shown, so a guild joined later behaves
+-- the way the chat did before any of this existed.
+function tabs:IsGuildInMainTab(guildId)
+	local map = addon.sv and addon.sv.guildMainTab
+	if not map or guildId == nil then
+		return true
+	end
+	local stored = map[tostring(guildId)]
+	if stored == nil then
+		return true
+	end
+	return stored
+end
+
+function tabs:SetGuildInMainTab(guildId, shown)
+	if not addon.sv or guildId == nil then
+		return
+	end
+	addon.sv.guildMainTab = addon.sv.guildMainTab or {}
+	addon.sv.guildMainTab[tostring(guildId)] = shown and true or false
+	self:Reconcile()
+end
+
 local function GuildTabName(guildIndex)
 	local guildId = GetGuildId and GetGuildId(guildIndex)
 	local name = guildId and GetGuildName and GetGuildName(guildId)
@@ -82,13 +119,11 @@ end
 -- The normal tab keeps everything it had; only the guild and officer categories are touched, and
 -- only according to the setting. Reading every guild in one place is the point of leaving them on.
 function tabs:ApplyMainTabGuildVisibility(container)
-	local wanted = addon.sv and addon.sv.guildInMainTab
-	if wanted == nil then
-		wanted = true
-	end
+	for guildIndex = 1, 5 do
+		local guildCategory, officerCategory = GuildCategories(guildIndex)
+		local guildId = GetGuildId and GetGuildId(guildIndex)
+		local wanted = self:IsGuildInMainTab(guildId)
 
-	for index = 1, 5 do
-		local guildCategory, officerCategory = GuildCategories(index)
 		if guildCategory then
 			container:SetWindowFilterEnabled(1, guildCategory, wanted)
 		end
@@ -166,6 +201,7 @@ function tabs:Reconcile()
 	end
 
 	self:ApplyMainTabGuildVisibility(container)
+	self:HighlightTabs(container)
 end
 
 function tabs:ScheduleReconcile()
@@ -221,6 +257,41 @@ function tabs:GetActiveIndex(container)
 	return 1
 end
 
+-- The selected tab, made obvious.
+--
+-- The tab group does colour its own selection, but on the console chat the difference is easy to
+-- miss at a glance. This states it plainly: the active tab bright, the rest dimmed. Re-applied on
+-- every select and every reconcile, because the group repaints its buttons on state changes and
+-- would otherwise put its own colours back.
+local function TabColors()
+	local active = ZO_SELECTED_TEXT or (ZO_ColorDef and ZO_ColorDef:New(1, 1, 1, 1))
+	local inactive = ZO_DISABLED_TEXT or (ZO_ColorDef and ZO_ColorDef:New(0.4, 0.4, 0.4, 1))
+	return active, inactive
+end
+
+function tabs:HighlightTabs(container)
+	container = container or GetContainer()
+	if not container or type(ZO_TabButton_Text_SetTextColor) ~= "function" then
+		return
+	end
+
+	local active, inactive = TabColors()
+	if not active or not inactive then
+		return
+	end
+
+	local activeIndex = self:GetActiveIndex(container)
+	for index = 1, #container.windows do
+		local tab = container.windows[index].tab
+		if tab then
+			if type(ZO_TabButton_Text_AllowColorChanges) == "function" then
+				ZO_TabButton_Text_AllowColorChanges(tab, true)
+			end
+			ZO_TabButton_Text_SetTextColor(tab, index == activeIndex and active or inactive)
+		end
+	end
+end
+
 function tabs:SelectTab(index, announce)
 	local container = GetContainer()
 	local window = container and container.windows[index]
@@ -232,6 +303,7 @@ function tabs:SelectTab(index, announce)
 		container.tabGroup:SetClickedButton(window.tab)
 	end
 	container:HandleTabClick(window.tab)
+	self:HighlightTabs(container)
 
 	if announce then
 		Print(GetString(SI_PBSCHATASSISTANT_TAB_LABEL), tostring(container:GetTabName(index)))
@@ -262,10 +334,13 @@ function tabs:PrintStatus()
 		return
 	end
 
-	Print("tabs %d, active %d, guild tabs %s, guild chat in main tab %s",
-		#container.windows, self:GetActiveIndex(container),
-		tostring(addon.sv and addon.sv.guildTabsEnabled), tostring(addon.sv and addon.sv.guildInMainTab))
+	Print("tabs %d, active %d, guild tabs %s", #container.windows,
+		self:GetActiveIndex(container), tostring(addon.sv and addon.sv.guildTabsEnabled))
 	for index = 1, #container.windows do
 		Print("  %d: %s", index, tostring(container:GetTabName(index)))
+	end
+	for _, slot in ipairs(self:GuildSlots()) do
+		Print("  guild %d %s: in normal tab %s", slot.index, tostring(slot.name),
+			tostring(self:IsGuildInMainTab(slot.guildId)))
 	end
 end

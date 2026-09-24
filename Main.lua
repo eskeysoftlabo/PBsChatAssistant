@@ -90,9 +90,11 @@ local DEFAULTS = {
 	-- One chat tab per guild, alongside the normal one. Tabs live in the client's own chat
 	-- settings, so turning this off removes the ones this add-on made rather than orphaning them.
 	guildTabsEnabled = true,
-	-- Whether the normal tab still carries guild and officer chat. On by default, because that is
-	-- how the chat reads today and reading every guild in one place is sometimes the point.
-	guildInMainTab = true,
+	-- Whether the normal tab still carries guild and officer chat, per guild rather than one
+	-- switch for all of them: some guilds are worth seeing in the general flow and some are not.
+	-- Keyed by guild id; a guild with no entry is shown, which is how chat read before any of
+	-- this existed.
+	guildMainTab = {},
 	-- 0 means leave the channel wherever the game left it. Any other value is a channel id
 	-- applied once when the player enters the world; see ApplyDefaultChannel.
 	defaultChannel = 0,
@@ -136,7 +138,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.18.0"
+local VERSION = "1.19.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1222,11 +1224,26 @@ function addon:InitSlashCommand()
 				self.chatTabs:PrintStatus()
 			end
 		elseif command == "guildinmain" then
-			self.sv.guildInMainTab = (argument ~= "off")
-			if self.chatTabs then
-				self.chatTabs:Reconcile()
+			local slot, state = argument:match("^(%S*)%s*(%S*)$")
+			local slotIndex = tonumber(slot)
+			if not self.chatTabs then
+				Print("chat tabs not loaded")
+			elseif not slotIndex then
+				Print("guildinmain <guild 1-5> on|off")
+				for _, entry in ipairs(self.chatTabs:GuildSlots()) do
+					Print("  %d %s: %s", entry.index, tostring(entry.name),
+						self.chatTabs:IsGuildInMainTab(entry.guildId) and "on" or "off")
+				end
+			else
+				local guildId = GetGuildId and GetGuildId(slotIndex)
+				if not guildId then
+					Print("no guild in slot %d", slotIndex)
+				else
+					self.chatTabs:SetGuildInMainTab(guildId, state ~= "off")
+					Print("%s in the normal tab: %s", tostring(GetGuildName(guildId)),
+						state ~= "off" and "on" or "off")
+				end
 			end
-			Print("guild chat in the normal tab %s", self.sv.guildInMainTab and "on" or "off")
 		elseif command == "layers" then
 			self:PrintLayers()
 		elseif command == "binds" then
