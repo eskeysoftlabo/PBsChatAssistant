@@ -24,8 +24,8 @@ function d() end
 local chat = {currentChannel = 1, IsTextEntryOpen = function() return entryOpen end}
 function ZO_GetChatSystem() return chat end
 PBS_CHAT_ASSISTANT = {sv = {enabled = true, hudChannelEnabled = true, captureMode = 'off'}}
-function PBS_CHAT_ASSISTANT:CycleChannel(step, suppressAlert)
- assert(step == 1 and suppressAlert); chat.currentChannel = chat.currentChannel % 3 + 1
+function PBS_CHAT_ASSISTANT:CycleChatTab(step)
+ assert(step == 1); chat.currentChannel = chat.currentChannel % 3 + 1
 end
 local hud = {fragments = {}}
 function hud:AddFragment(f) self.fragments[f] = true end
@@ -104,11 +104,11 @@ test('disconnect removes layer and reconnect resumes', function()
  assert(c.running and not c.layerAdded)
 end)
 test('channel error still consumes Right release before removing quest block', function()
- reset(); hold(); local original = PBS_CHAT_ASSISTANT.CycleChannel
- PBS_CHAT_ASSISTANT.CycleChannel = function() error('test failure') end
+ reset(); hold(); local original = PBS_CHAT_ASSISTANT.CycleChatTab
+ PBS_CHAT_ASSISTANT.CycleChatTab = function() error('test failure') end
  assert(c:OnRightDown()); analog = 0; c:Update(); assert(c.layerAdded)
  assert(c:OnRightUp()); c:Update(); assert(not c.layerAdded)
- PBS_CHAT_ASSISTANT.CycleChannel = original
+ PBS_CHAT_ASSISTANT.CycleChatTab = original
 end)
 test('legacy L3 layer is retired and only Right layer is attached', function()
  reset(); assert(removedLayers['PBsChatAssistantHUDChannelLayer'])

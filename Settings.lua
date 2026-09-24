@@ -47,6 +47,47 @@ function addon:InitSettings()
 		}
 	)
 
+	-- Guild tabs, and whether the normal tab still carries their chat.
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHATASSISTANT_GUILDTABS),
+			tooltip = GetString(SI_PBSCHATASSISTANT_GUILDTABS_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self.sv.guildTabsEnabled
+			end,
+			setFunction = function(value)
+				self.sv.guildTabsEnabled = value
+				if self.chatTabs then
+					if value then
+						self.chatTabs:Reconcile()
+					else
+						self.chatTabs:RemoveAll()
+					end
+				end
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHATASSISTANT_GUILDINMAIN),
+			tooltip = GetString(SI_PBSCHATASSISTANT_GUILDINMAIN_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self.sv.guildInMainTab
+			end,
+			setFunction = function(value)
+				self.sv.guildInMainTab = value
+				if self.chatTabs then
+					self.chatTabs:Reconcile()
+				end
+			end
+		}
+	)
+
 	-- Which channel a session starts on.
 	--
 	-- The item list is rebuilt whenever this panel is opened rather than fixed when the add-on

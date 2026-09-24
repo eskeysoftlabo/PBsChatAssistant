@@ -87,6 +87,12 @@ local DEFAULTS = {
 	channelKeys = true,
 	entryChannelLayer = true, -- legacy setting
 	hudChannelEnabled = true,
+	-- One chat tab per guild, alongside the normal one. Tabs live in the client's own chat
+	-- settings, so turning this off removes the ones this add-on made rather than orphaning them.
+	guildTabsEnabled = true,
+	-- Whether the normal tab still carries guild and officer chat. On by default, because that is
+	-- how the chat reads today and reading every guild in one place is sometimes the point.
+	guildInMainTab = true,
 	-- 0 means leave the channel wherever the game left it. Any other value is a channel id
 	-- applied once when the player enters the world; see ApplyDefaultChannel.
 	defaultChannel = 0,
@@ -130,7 +136,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.17.0"
+local VERSION = "1.18.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -466,6 +472,19 @@ function addon:ApplyDefaultChannel()
 	-- Not available: no guild any more, or not grouped. Left alone rather than reset, since the
 	-- setting may become valid again later in the session.
 	self:Log("default channel %s not available", tostring(wanted))
+end
+
+-- What L2 + D-pad Right does now: move to the next chat tab.
+--
+-- Falls back to walking the outgoing channel when the guild tabs are switched off, so the chord
+-- still does something useful rather than nothing at all.
+function addon:CycleChatTab(step)
+	if self.chatTabs and self.sv and self.sv.guildTabsEnabled then
+		if self.chatTabs:Cycle(step) then
+			return
+		end
+	end
+	self:CycleChannel(step, true)
 end
 
 function addon:CycleChannel(step, suppressAlert)
@@ -1183,22 +1202,31 @@ function addon:InitSlashCommand()
 			Print("force layer is disabled; hold L2 on the HUD to enable the D-pad Right channel shortcut")
 		elseif command == "hudstatus" then
 			if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:PrintStatus() end
-		elseif command == "tabprobe" then
-			-- Deliberately not a feature yet. See ChatTabs.lua: adding a tab means calling
-			-- client code that builds UI, and whether an add-on may is the one thing worth a
-			-- measurement before the guild tabs are written.
-			local chatTabs = self.chatTabs
-			if not chatTabs then
-				Print("chat tab probe not loaded")
-			elseif argument == "add" then
-				chatTabs:AddProbeTab()
-			elseif argument == "remove" then
-				chatTabs:RemoveProbeTab()
+		elseif command == "tabs" then
+			if not self.chatTabs then
+				Print("chat tabs not loaded")
+			elseif argument == "off" or argument == "on" then
+				self.sv.guildTabsEnabled = (argument == "on")
+				if self.sv.guildTabsEnabled then
+					self.chatTabs:Reconcile()
+				else
+					self.chatTabs:RemoveAll()
+				end
+				Print("guild tabs %s", self.sv.guildTabsEnabled and "on" or "off")
+			elseif argument == "rebuild" then
+				self.chatTabs:Reconcile()
+				self.chatTabs:PrintStatus()
 			elseif tonumber(argument) then
-				chatTabs:SelectTab(tonumber(argument))
+				self.chatTabs:SelectTab(tonumber(argument), true)
 			else
-				chatTabs:PrintStatus()
+				self.chatTabs:PrintStatus()
 			end
+		elseif command == "guildinmain" then
+			self.sv.guildInMainTab = (argument ~= "off")
+			if self.chatTabs then
+				self.chatTabs:Reconcile()
+			end
+			Print("guild chat in the normal tab %s", self.sv.guildInMainTab and "on" or "off")
 		elseif command == "layers" then
 			self:PrintLayers()
 		elseif command == "binds" then
@@ -1206,7 +1234,7 @@ function addon:InitSlashCommand()
 		elseif command == "hudchannel" or command == "entrychannel" then
 			self.sv.hudChannelEnabled = (argument ~= "off")
 			if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:Update() end
-			Print("HUD L2+D-pad Right channel switching %s", self.sv.hudChannelEnabled and "on" or "off")
+			Print("HUD L2+D-pad Right tab switching %s", self.sv.hudChannelEnabled and "on" or "off")
 		elseif command == "channel" then
 			self.sv.channelKeys = (argument ~= "off")
 			Print("channel keys %s", self.sv.channelKeys and "on" or "off")
@@ -1362,6 +1390,24 @@ local function OnAddOnLoaded(_, name)
 			addon:ApplyDefaultChannel()
 		end, DEFAULT_CHANNEL_DELAY_MS)
 	end)
+
+	-- Guild membership decides the tabs, and it is not known the instant the world appears.
+	-- All three of these schedule the same debounced pass.
+	local function ScheduleTabs()
+		if addon.chatTabs then
+			addon.chatTabs:ScheduleReconcile()
+		end
+	end
+	em:RegisterForEvent(addon.name .. "Tabs", EVENT_PLAYER_ACTIVATED, ScheduleTabs)
+	if EVENT_GUILD_DATA_LOADED then
+		em:RegisterForEvent(addon.name .. "Tabs", EVENT_GUILD_DATA_LOADED, ScheduleTabs)
+	end
+	if EVENT_GUILD_SELF_JOINED_GUILD then
+		em:RegisterForEvent(addon.name .. "TabsJoin", EVENT_GUILD_SELF_JOINED_GUILD, ScheduleTabs)
+	end
+	if EVENT_GUILD_SELF_LEFT_GUILD then
+		em:RegisterForEvent(addon.name .. "TabsLeave", EVENT_GUILD_SELF_LEFT_GUILD, ScheduleTabs)
+	end
 
 	em:RegisterForEvent(addon.name, EVENT_INPUT_TYPE_CHANGED, function(_, isGamepad)
 		-- Deliberately not logged. This fires on every switch between the keyboard and the

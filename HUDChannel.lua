@@ -1,4 +1,5 @@
 -- L2 is read, never bound. Only Right is temporarily reassigned while L2 is held on HUD.
+-- The chord moves to the next chat tab; see CycleChatTab.
 -- No HUD element of its own: the channel is reported to the chat log by CycleChannel.
 local NAME = "PBsChatAssistantHUDChannel"
 local LAYER = "PBsChatAssistantHUDChannelRightLayer"
@@ -116,12 +117,10 @@ function channel:OnRightDown()
     end
     self.consumedRight = true
     self.rightDownAt = GetGameTimeSeconds()
-    local chat = GetChat()
-    local before = chat.currentChannel
-    local ok, err = pcall(function() PBS_CHAT_ASSISTANT:CycleChannel(1, true) end)
+    local ok, err = pcall(function() PBS_CHAT_ASSISTANT:CycleChatTab(1) end)
     if not ok then
-        self.error = "channel: " .. tostring(err)
-    elseif chat.currentChannel ~= before then
+        self.error = "tab: " .. tostring(err)
+    else
         self.changes = self.changes + 1
     end
     -- One channel change per physical press. Keep the quest block through Up.
