@@ -33,6 +33,7 @@ local TAB_STRIP_X = 12
 local TAB_STRIP_Y = -6
 local TAB_STRIP_GAP = 10
 local TAB_DRAW_LEVEL = 5
+local TAB_STRIP_HEIGHT = 30
 
 local function Print(formatString, ...)
 	d(string.format("|cFF69B4PB's ChatAssistant|r: " .. formatString, ...))
@@ -323,6 +324,7 @@ function tabs:LayoutTabs(container)
 	end
 
 	local offsetY = (addon.sv and addon.sv.tabStripY) or TAB_STRIP_Y
+	local height = (addon.sv and addon.sv.tabStripHeight) or TAB_STRIP_HEIGHT
 	local x = TAB_STRIP_X
 
 	for index = 1, #container.windows do
@@ -330,10 +332,30 @@ function tabs:LayoutTabs(container)
 		if tab then
 			tab:ClearAnchors()
 			tab:SetAnchor(BOTTOMLEFT, container.control, BOTTOMLEFT, x, offsetY)
+
+			-- Height, explicitly.
+			--
+			-- SizeButtonToFitText sets the width from the label and nothing sets the height; on
+			-- the keyboard chat the surrounding layout supplies it. A control 36 wide and 0 high
+			-- reports a width, reports itself not hidden, and draws nothing, which is exactly what
+			-- was measured here.
+			if tab:GetHeight() < 1 then
+				tab:SetHeight(height)
+			end
+
 			tab:SetHidden(false)
+			tab:SetAlpha(1)
+
+			local label = tab.GetNamedChild and tab:GetNamedChild("Text")
+			if label then
+				label:SetHidden(false)
+				label:SetAlpha(1)
+			end
+
 			if type(tab.SetDrawLevel) == "function" then
 				tab:SetDrawLevel(TAB_DRAW_LEVEL)
 			end
+
 			x = x + tab:GetWidth() + TAB_STRIP_GAP
 		end
 	end
@@ -396,9 +418,16 @@ function tabs:PrintStatus()
 
 	for index = 1, #container.windows do
 		local tab = container.windows[index].tab
-		Print("  %d: %s (tab %s, hidden %s, w %s)", index, tostring(container:GetTabName(index)),
-			tostring(tab ~= nil), tostring(tab and tab:IsHidden()),
-			tostring(tab and tab:GetWidth()))
+		local label = tab and tab.GetNamedChild and tab:GetNamedChild("Text")
+		local parent = tab and tab:GetParent()
+		Print("  %d: %s w %s h %s a %s hidden %s", index, tostring(container:GetTabName(index)),
+			tostring(tab and tab:GetWidth()), tostring(tab and tab:GetHeight()),
+			tostring(tab and tab:GetAlpha()), tostring(tab and tab:IsHidden()))
+		Print("     parent %s (hidden %s, a %s), label %s (hidden %s, a %s)",
+			tostring(parent and parent.GetName and parent:GetName()),
+			tostring(parent and parent:IsHidden()), tostring(parent and parent:GetAlpha()),
+			tostring(label ~= nil), tostring(label and label:IsHidden()),
+			tostring(label and label:GetAlpha()))
 	end
 	for _, slot in ipairs(self:GuildSlots()) do
 		Print("  guild %d %s: in normal tab %s", slot.index, tostring(slot.name),
