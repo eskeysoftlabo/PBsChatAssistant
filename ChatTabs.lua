@@ -39,6 +39,10 @@ local function Print(formatString, ...)
 end
 
 local function GetContainer()
+	local strip = self.strip
+	Print("strip %s, hidden %s, drawn tabs %d", tostring(strip ~= nil),
+		tostring(strip and strip:IsHidden()), self.stripTabs and #self.stripTabs or 0)
+
 	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
 	return chat and chat.primaryContainer
 end
@@ -396,6 +400,51 @@ function tabs:RefreshStrip(container)
 	end
 end
 
+-- The smallest possible question: can this add-on put anything on screen at all?
+--
+-- It could once. The status label this add-on used to show for the outgoing channel was a top
+-- level window of 1100x40 anchored TOP to GuiRoot at y 110 with a ZoFontGame label, and it
+-- displayed. The tab strip is built the same way and does not. So this reproduces that label
+-- exactly, adds a bright backdrop behind it so there is something to see even if text is the
+-- problem, and is created and shown immediately rather than from inside a reconcile.
+--
+-- If this shows, the fault is in when or whether RefreshStrip runs. If it does not, nothing this
+-- add-on draws reaches the screen any more and the strip cannot be built this way at all.
+function tabs:DrawTest(on)
+	if not on then
+		if self.testWindow then
+			self.testWindow:SetHidden(true)
+		end
+		Print("draw test off")
+		return
+	end
+
+	if not self.testWindow then
+		local window = WINDOW_MANAGER:CreateTopLevelWindow("PBsChatAssistantDrawTest")
+		window:SetDimensions(1100, 40)
+		window:SetAnchor(TOP, GuiRoot, TOP, 0, 110)
+		window:SetMouseEnabled(false)
+
+		local backdrop = WINDOW_MANAGER:CreateControl("PBsChatAssistantDrawTestBg", window, CT_BACKDROP)
+		backdrop:SetAnchorFill()
+		backdrop:SetCenterColor(1, 0, 0, 0.8)
+		backdrop:SetEdgeColor(1, 1, 0, 1)
+
+		local label = WINDOW_MANAGER:CreateControl("PBsChatAssistantDrawTestLabel", window, CT_LABEL)
+		label:SetAnchorFill()
+		label:SetFont("ZoFontGame")
+		label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+		label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+		label:SetText("PB DRAW TEST")
+		label:SetColor(1, 1, 1, 1)
+
+		self.testWindow = window
+	end
+
+	self.testWindow:SetHidden(false)
+	Print("draw test on: red bar with PB DRAW TEST, top centre, 110 down")
+end
+
 function tabs:SelectTab(index, announce)
 	local container = GetContainer()
 	local window = container and container.windows[index]
@@ -437,6 +486,10 @@ function tabs:PrintStatus()
 		Print("no chat container")
 		return
 	end
+
+	local strip = self.strip
+	Print("strip %s, hidden %s, drawn tabs %d", tostring(strip ~= nil),
+		tostring(strip and strip:IsHidden()), self.stripTabs and #self.stripTabs or 0)
 
 	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
 	Print("tabs %d, active %d, guild tabs %s, guilds %d", #container.windows,
