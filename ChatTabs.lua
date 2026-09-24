@@ -334,10 +334,23 @@ function tabs:PrintStatus()
 		return
 	end
 
-	Print("tabs %d, active %d, guild tabs %s", #container.windows,
-		self:GetActiveIndex(container), tostring(addon.sv and addon.sv.guildTabsEnabled))
+	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
+	Print("tabs %d, active %d, guild tabs %s, guilds %d", #container.windows,
+		self:GetActiveIndex(container), tostring(addon.sv and addon.sv.guildTabsEnabled),
+		GetNumGuilds and GetNumGuilds() or -1)
+
+	-- Whether a tab exists and whether it can be seen are different questions, and the answer so
+	-- far is "no visible change", which both would produce. Minimised is the suspect: the console
+	-- chat sits collapsed during play, and the tabs are children of the container that collapses.
+	Print("container hidden %s, minimised %s, HUD %s",
+		tostring(container.control and container.control:IsHidden()),
+		tostring(chat and chat.isMinimized), tostring(chat and chat.hudEnabled))
+
 	for index = 1, #container.windows do
-		Print("  %d: %s", index, tostring(container:GetTabName(index)))
+		local tab = container.windows[index].tab
+		Print("  %d: %s (tab %s, hidden %s, w %s)", index, tostring(container:GetTabName(index)),
+			tostring(tab ~= nil), tostring(tab and tab:IsHidden()),
+			tostring(tab and tab:GetWidth()))
 	end
 	for _, slot in ipairs(self:GuildSlots()) do
 		Print("  guild %d %s: in normal tab %s", slot.index, tostring(slot.name),
