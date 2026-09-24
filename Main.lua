@@ -95,6 +95,9 @@ local DEFAULTS = {
 	-- Keyed by guild id; a guild with no entry is shown, which is how chat read before any of
 	-- this existed.
 	guildMainTab = {},
+	-- Vertical offset of the tab strip from the bottom inside edge of the chat box. Negative
+	-- moves it up into the box; a nudge is easier to type than another build.
+	tabStripY = -6,
 	-- 0 means leave the channel wherever the game left it. Any other value is a channel id
 	-- applied once when the player enters the world; see ApplyDefaultChannel.
 	defaultChannel = 0,
@@ -138,7 +141,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.19.1"
+local VERSION = "1.20.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -1218,6 +1221,10 @@ function addon:InitSlashCommand()
 			elseif argument == "rebuild" then
 				self.chatTabs:Reconcile()
 				self.chatTabs:PrintStatus()
+			elseif argument:match("^y%s") then
+				self.sv.tabStripY = tonumber(argument:match("^y%s+(-?%d+)")) or self.sv.tabStripY
+				self.chatTabs:LayoutTabs()
+				Print("tab strip y %d", self.sv.tabStripY)
 			elseif tonumber(argument) then
 				self.chatTabs:SelectTab(tonumber(argument), true)
 			else

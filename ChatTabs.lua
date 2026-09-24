@@ -22,6 +22,18 @@ addon.chatTabs = tabs
 -- times over.
 local RECONCILE_DELAY_MS = 2000
 
+-- Tab strip geometry, applied by this add-on rather than by the client.
+--
+-- The client anchors tabs BOTTOMLEFT to the container's TOPLEFT, which puts them above the box
+-- and outside its rectangle. On console that comes out invisible: measured with five tabs, all
+-- reporting hidden false with real widths, and nothing on screen. Rather than work out which of
+-- the several reasons that could be, the strip is placed inside the container where there is
+-- nothing to argue with -- and along the bottom, which is where it was asked for.
+local TAB_STRIP_X = 12
+local TAB_STRIP_Y = -6
+local TAB_STRIP_GAP = 10
+local TAB_DRAW_LEVEL = 5
+
 local function Print(formatString, ...)
 	d(string.format("|cFF69B4PB's ChatAssistant|r: " .. formatString, ...))
 end
@@ -201,7 +213,15 @@ function tabs:Reconcile()
 	end
 
 	self:ApplyMainTabGuildVisibility(container)
+	self:LayoutTabs(container)
 	self:HighlightTabs(container)
+
+	-- Adding a tab makes the client relayout a moment later, which undoes the strip. One more
+	-- pass after that settles it.
+	zo_callLater(function()
+		self:LayoutTabs()
+		self:HighlightTabs()
+	end, 500)
 end
 
 function tabs:ScheduleReconcile()
@@ -292,6 +312,33 @@ function tabs:HighlightTabs(container)
 	end
 end
 
+-- Lays the tabs along the bottom inside edge of the chat container.
+--
+-- Re-applied after every reconcile and every select, because the client's own PerformLayout runs
+-- on tab size changes and would put them back above the box.
+function tabs:LayoutTabs(container)
+	container = container or GetContainer()
+	if not container or not container.control then
+		return
+	end
+
+	local offsetY = (addon.sv and addon.sv.tabStripY) or TAB_STRIP_Y
+	local x = TAB_STRIP_X
+
+	for index = 1, #container.windows do
+		local tab = container.windows[index].tab
+		if tab then
+			tab:ClearAnchors()
+			tab:SetAnchor(BOTTOMLEFT, container.control, BOTTOMLEFT, x, offsetY)
+			tab:SetHidden(false)
+			if type(tab.SetDrawLevel) == "function" then
+				tab:SetDrawLevel(TAB_DRAW_LEVEL)
+			end
+			x = x + tab:GetWidth() + TAB_STRIP_GAP
+		end
+	end
+end
+
 function tabs:SelectTab(index, announce)
 	local container = GetContainer()
 	local window = container and container.windows[index]
@@ -303,6 +350,7 @@ function tabs:SelectTab(index, announce)
 		container.tabGroup:SetClickedButton(window.tab)
 	end
 	container:HandleTabClick(window.tab)
+	self:LayoutTabs(container)
 	self:HighlightTabs(container)
 
 	if announce then
