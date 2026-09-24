@@ -301,58 +301,44 @@ function tabs:EnsureStrip()
 		return nil
 	end
 
+	-- Built the same way as the draw test, which is the only arrangement seen to display on this
+	-- platform: a top level window, one backdrop anchored fill, labels on top. The previous
+	-- version gave every tab its own backdrop and called SetEdgeTexture with an empty string,
+	-- neither of which the working one did, and nothing appeared.
 	local window = WINDOW_MANAGER:CreateTopLevelWindow(STRIP_NAME)
 	window:SetDimensions(STRIP_WIDTH, STRIP_HEIGHT)
 	window:SetMouseEnabled(false)
 	window:SetHidden(true)
 
+	local backdrop = WINDOW_MANAGER:CreateControl(STRIP_NAME .. "Bg", window, CT_BACKDROP)
+	backdrop:SetAnchorFill()
+	backdrop:SetCenterColor(0, 0, 0, 0.6)
+	backdrop:SetEdgeColor(0, 0, 0, 0)
+
 	self.strip = window
+	self.stripBackdrop = backdrop
 	self.stripTabs = {}
 	self:PositionStrip()
 	return window
 end
 
--- Anchored TOP to GuiRoot, with both offsets settings. X moves it sideways from the centre, Y
--- down from the top, which is the easiest pair to describe to somebody nudging it into place.
-function tabs:PositionStrip()
-	if not self.strip then
-		return
-	end
-	local x = (addon.sv and addon.sv.tabStripX) or 0
-	local y = (addon.sv and addon.sv.tabStripY) or 110
-
-	-- Clamped, because an offset that puts the strip off the screen looks exactly like a strip
-	-- that was never drawn, and that cost several rounds to tell apart. Y is measured down from
-	-- the top, so a negative one is always wrong.
-	if y < 0 then
-		y = 0
-	end
-
-	self.strip:ClearAnchors()
-	self.strip:SetAnchor(TOP, GuiRoot, TOP, x, y)
-end
-
--- One backdrop and one label per tab, made once and reused.
+-- One label per tab, and nothing else. Colour is the whole of the styling: the active tab white
+-- and solid, the rest grey.
 function tabs:AcquireStripTab(index)
 	local existing = self.stripTabs[index]
 	if existing then
 		return existing
 	end
 
-	local name = string.format("%sTab%d", STRIP_NAME, index)
-	local backdrop = WINDOW_MANAGER:CreateControl(name, self.strip, CT_BACKDROP)
-	backdrop:SetEdgeTexture("", 1, 1, 1)
-	backdrop:SetHeight(STRIP_HEIGHT - 6)
-
-	local label = WINDOW_MANAGER:CreateControl(name .. "Label", backdrop, CT_LABEL)
-	label:SetAnchorFill()
+	local label = WINDOW_MANAGER:CreateControl(string.format("%sLabel%d", STRIP_NAME, index),
+		self.strip, CT_LABEL)
 	label:SetFont("ZoFontGame")
 	label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
 	label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+	label:SetHeight(STRIP_HEIGHT)
 
-	local entry = { backdrop = backdrop, label = label }
-	self.stripTabs[index] = entry
-	return entry
+	self.stripTabs[index] = label
+	return label
 end
 
 -- The offsets have meant three different things: an inset from the chat box, an offset from the
@@ -390,36 +376,33 @@ function tabs:RefreshStrip(container)
 	local activeIndex = self:GetActiveIndex(container)
 	local count = #container.windows
 
-	-- Laid out centre-outwards: total width first, then each tab from the left edge of that.
 	local widths = {}
 	local total = 0
 	for index = 1, count do
-		local entry = self:AcquireStripTab(index)
-		local name = container:GetTabName(index) or tostring(index)
-		entry.label:SetText(name)
-		local width = entry.label:GetTextWidth() + TAB_PADDING_X * 2
+		local label = self:AcquireStripTab(index)
+		label:SetText(container:GetTabName(index) or tostring(index))
+		local width = label:GetTextWidth() + TAB_PADDING_X * 2
 		widths[index] = width
 		total = total + width + (index > 1 and TAB_GAP or 0)
 	end
 
 	local x = -total / 2
 	for index = 1, count do
-		local entry = self.stripTabs[index]
+		local label = self.stripTabs[index]
 		local active = index == activeIndex
 
-		entry.backdrop:SetWidth(widths[index])
-		entry.backdrop:ClearAnchors()
-		entry.backdrop:SetAnchor(LEFT, strip, CENTER, x, 0)
-		entry.backdrop:SetHidden(false)
-		entry.backdrop:SetCenterColor(0, 0, 0, active and 0.8 or 0.4)
-		Colour(entry.label, 1, 1, 1, active and 1 or 0.45)
+		label:SetWidth(widths[index])
+		label:ClearAnchors()
+		label:SetAnchor(LEFT, self.strip, CENTER, x, 0)
+		label:SetHidden(false)
+		label:SetColor(1, 1, 1, active and 1 or 0.4)
 
 		x = x + widths[index] + TAB_GAP
 	end
 
 	-- Tabs left over from a guild that has gone.
 	for index = count + 1, #self.stripTabs do
-		self.stripTabs[index].backdrop:SetHidden(true)
+		self.stripTabs[index]:SetHidden(true)
 	end
 end
 
