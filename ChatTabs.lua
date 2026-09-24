@@ -29,11 +29,10 @@ local RECONCILE_DELAY_MS = 2000
 -- reporting hidden false with real widths, and nothing on screen. Rather than work out which of
 -- the several reasons that could be, the strip is placed inside the container where there is
 -- nothing to argue with -- and along the bottom, which is where it was asked for.
-local TAB_STRIP_X = 12
-local TAB_STRIP_Y = -6
-local TAB_STRIP_GAP = 10
-local TAB_DRAW_LEVEL = 5
-local TAB_STRIP_HEIGHT = 30
+local TAB_STRIP_X = -20
+local TAB_STRIP_Y = -215
+local TAB_STRIP_WIDTH = 900
+local TAB_STRIP_HEIGHT = 32
 
 local function Print(formatString, ...)
 	d(string.format("|cFF69B4PB's ChatAssistant|r: " .. formatString, ...))
@@ -214,15 +213,7 @@ function tabs:Reconcile()
 	end
 
 	self:ApplyMainTabGuildVisibility(container)
-	self:LayoutTabs(container)
-	self:HighlightTabs(container)
-
-	-- Adding a tab makes the client relayout a moment later, which undoes the strip. One more
-	-- pass after that settles it.
-	zo_callLater(function()
-		self:LayoutTabs()
-		self:HighlightTabs()
-	end, 500)
+	self:RefreshStrip(container)
 end
 
 function tabs:ScheduleReconcile()
@@ -278,87 +269,88 @@ function tabs:GetActiveIndex(container)
 	return 1
 end
 
--- The selected tab, made obvious.
+-- The tab strip, drawn by this add-on.
 --
--- The tab group does colour its own selection, but on the console chat the difference is easy to
--- miss at a glance. This states it plainly: the active tab bright, the rest dimmed. Re-applied on
--- every select and every reconcile, because the group repaints its buttons on state changes and
--- would otherwise put its own colours back.
-local function TabColors()
-	local active = ZO_SELECTED_TEXT or (ZO_ColorDef and ZO_ColorDef:New(1, 1, 1, 1))
-	local inactive = ZO_DISABLED_TEXT or (ZO_ColorDef and ZO_ColorDef:New(0.4, 0.4, 0.4, 1))
-	return active, inactive
+-- The client's own tab buttons are real, sized and opaque and simply never appear on console.
+-- Measured: width 36, height 24, alpha 1, hidden false, parent ZO_GamepadTextChat which is itself
+-- shown with alpha 1 -- every reading says visible, and nothing is on screen. Placing them inside
+-- the container instead of above it changed nothing.
+--
+-- So the buttons keep doing the work they are good at, which is owning the buffers and the
+-- category filters, and the strip that says which tab is active is drawn here instead. A plain
+-- top level control with one label is known to display on this platform; the add-on used one
+-- before for the outgoing channel.
+local STRIP_NAME = "PBsChatAssistantTabStrip"
+
+local ACTIVE_COLOUR = "FFFFFF"
+local INACTIVE_COLOUR = "6E6E6E"
+
+function tabs:EnsureStrip()
+	if self.strip then
+		return self.strip
+	end
+
+	if type(WINDOW_MANAGER) ~= "table" then
+		return nil
+	end
+
+	local window = WINDOW_MANAGER:CreateTopLevelWindow(STRIP_NAME)
+	window:SetDimensions(TAB_STRIP_WIDTH, TAB_STRIP_HEIGHT)
+	window:SetMouseEnabled(false)
+	window:SetHidden(true)
+
+	local label = WINDOW_MANAGER:CreateControl(STRIP_NAME .. "Label", window, CT_LABEL)
+	label:SetAnchorFill()
+	label:SetFont("ZoFontGamepad27")
+	label:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+	label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+
+	self.strip = window
+	self.stripLabel = label
+	self:PositionStrip()
+	return window
 end
 
-function tabs:HighlightTabs(container)
-	container = container or GetContainer()
-	if not container or type(ZO_TabButton_Text_SetTextColor) ~= "function" then
+-- Anchored to the screen rather than to the chat box.
+--
+-- The chat container is where the invisible buttons live, and anchoring to something whose
+-- position cannot be confirmed is how this went wrong the first time. GuiRoot is unambiguous, and
+-- the console chat sits at a fixed place anyway: bottom right, 215 up. Both offsets are settings,
+-- so fitting it is a command rather than a build.
+function tabs:PositionStrip()
+	if not self.strip then
 		return
 	end
 
-	local active, inactive = TabColors()
-	if not active or not inactive then
+	local x = (addon.sv and addon.sv.tabStripX) or TAB_STRIP_X
+	local y = (addon.sv and addon.sv.tabStripY) or TAB_STRIP_Y
+	self.strip:ClearAnchors()
+	self.strip:SetAnchor(BOTTOMRIGHT, GuiRoot, BOTTOMRIGHT, x, y)
+end
+
+function tabs:RefreshStrip(container)
+	container = container or GetContainer()
+	local strip = self:EnsureStrip()
+	if not strip or not container then
+		return
+	end
+
+	local wanted = addon.sv and addon.sv.guildTabsEnabled and #container.windows > 1
+	strip:SetHidden(not wanted)
+	if not wanted then
 		return
 	end
 
 	local activeIndex = self:GetActiveIndex(container)
+	local parts = {}
 	for index = 1, #container.windows do
-		local tab = container.windows[index].tab
-		if tab then
-			if type(ZO_TabButton_Text_AllowColorChanges) == "function" then
-				ZO_TabButton_Text_AllowColorChanges(tab, true)
-			end
-			ZO_TabButton_Text_SetTextColor(tab, index == activeIndex and active or inactive)
-		end
-	end
-end
-
--- Lays the tabs along the bottom inside edge of the chat container.
---
--- Re-applied after every reconcile and every select, because the client's own PerformLayout runs
--- on tab size changes and would put them back above the box.
-function tabs:LayoutTabs(container)
-	container = container or GetContainer()
-	if not container or not container.control then
-		return
+		local name = container:GetTabName(index) or tostring(index)
+		local colour = index == activeIndex and ACTIVE_COLOUR or INACTIVE_COLOUR
+		parts[#parts + 1] = string.format("|c%s%s|r", colour, name)
 	end
 
-	local offsetY = (addon.sv and addon.sv.tabStripY) or TAB_STRIP_Y
-	local height = (addon.sv and addon.sv.tabStripHeight) or TAB_STRIP_HEIGHT
-	local x = TAB_STRIP_X
-
-	for index = 1, #container.windows do
-		local tab = container.windows[index].tab
-		if tab then
-			tab:ClearAnchors()
-			tab:SetAnchor(BOTTOMLEFT, container.control, BOTTOMLEFT, x, offsetY)
-
-			-- Height, explicitly.
-			--
-			-- SizeButtonToFitText sets the width from the label and nothing sets the height; on
-			-- the keyboard chat the surrounding layout supplies it. A control 36 wide and 0 high
-			-- reports a width, reports itself not hidden, and draws nothing, which is exactly what
-			-- was measured here.
-			if tab:GetHeight() < 1 then
-				tab:SetHeight(height)
-			end
-
-			tab:SetHidden(false)
-			tab:SetAlpha(1)
-
-			local label = tab.GetNamedChild and tab:GetNamedChild("Text")
-			if label then
-				label:SetHidden(false)
-				label:SetAlpha(1)
-			end
-
-			if type(tab.SetDrawLevel) == "function" then
-				tab:SetDrawLevel(TAB_DRAW_LEVEL)
-			end
-
-			x = x + tab:GetWidth() + TAB_STRIP_GAP
-		end
-	end
+	self.stripLabel:SetText(table.concat(parts, "  "))
+	self:PositionStrip()
 end
 
 function tabs:SelectTab(index, announce)
@@ -372,8 +364,7 @@ function tabs:SelectTab(index, announce)
 		container.tabGroup:SetClickedButton(window.tab)
 	end
 	container:HandleTabClick(window.tab)
-	self:LayoutTabs(container)
-	self:HighlightTabs(container)
+	self:RefreshStrip(container)
 
 	if announce then
 		Print(GetString(SI_PBSCHATASSISTANT_TAB_LABEL), tostring(container:GetTabName(index)))
