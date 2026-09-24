@@ -39,10 +39,6 @@ local function Print(formatString, ...)
 end
 
 local function GetContainer()
-	local strip = self.strip
-	Print("strip %s, hidden %s, drawn tabs %d", tostring(strip ~= nil),
-		tostring(strip and strip:IsHidden()), self.stripTabs and #self.stripTabs or 0)
-
 	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
 	return chat and chat.primaryContainer
 end
@@ -481,6 +477,10 @@ function tabs:Cycle(step)
 end
 
 function tabs:PrintStatus()
+	local strip = self.strip
+	Print("strip %s, hidden %s, drawn tabs %d", tostring(strip ~= nil),
+		tostring(strip and strip:IsHidden()), self.stripTabs and #self.stripTabs or 0)
+
 	local container = GetContainer()
 	if not container then
 		Print("no chat container")
