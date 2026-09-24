@@ -269,88 +269,131 @@ function tabs:GetActiveIndex(container)
 	return 1
 end
 
--- The tab strip, drawn by this add-on.
+-- The tab strip, drawn entirely by this add-on.
 --
--- The client's own tab buttons are real, sized and opaque and simply never appear on console.
--- Measured: width 36, height 24, alpha 1, hidden false, parent ZO_GamepadTextChat which is itself
--- shown with alpha 1 -- every reading says visible, and nothing is on screen. Placing them inside
--- the container instead of above it changed nothing.
+-- The client's own tab buttons never appear on console. Measured: width 36, height 24, alpha 1,
+-- hidden false, parent ZO_GamepadTextChat itself shown with alpha 1 -- every reading says visible
+-- and nothing is on screen, whether they are placed above the chat box or inside it. They keep
+-- the job they are good at, which is owning the buffers, the filters and the switching.
 --
--- So the buttons keep doing the work they are good at, which is owning the buffers and the
--- category filters, and the strip that says which tab is active is drawn here instead. A plain
--- top level control with one label is known to display on this platform; the add-on used one
--- before for the outgoing channel.
+-- Everything below is this add-on's own controls: a window, and per tab a backdrop with a label.
+-- The starting geometry is deliberately the one configuration known to have displayed on this
+-- platform -- a top level window of 1100x40 anchored TOP to GuiRoot at y 110, labels in
+-- ZoFontGame -- because the point of this pass is to be seen first and pretty second. Where it
+-- sits is a setting, so it can be moved to wherever it belongs without another build.
 local STRIP_NAME = "PBsChatAssistantTabStrip"
+local STRIP_WIDTH = 1100
+local STRIP_HEIGHT = 40
+local TAB_PADDING_X = 14
+local TAB_GAP = 8
 
-local ACTIVE_COLOUR = "FFFFFF"
-local INACTIVE_COLOUR = "6E6E6E"
+local function Colour(control, r, g, b, a)
+	if control and control.SetColor then
+		control:SetColor(r, g, b, a)
+	end
+end
 
 function tabs:EnsureStrip()
 	if self.strip then
 		return self.strip
 	end
-
 	if type(WINDOW_MANAGER) ~= "table" then
 		return nil
 	end
 
 	local window = WINDOW_MANAGER:CreateTopLevelWindow(STRIP_NAME)
-	window:SetDimensions(TAB_STRIP_WIDTH, TAB_STRIP_HEIGHT)
+	window:SetDimensions(STRIP_WIDTH, STRIP_HEIGHT)
 	window:SetMouseEnabled(false)
 	window:SetHidden(true)
 
-	local label = WINDOW_MANAGER:CreateControl(STRIP_NAME .. "Label", window, CT_LABEL)
-	label:SetAnchorFill()
-	label:SetFont("ZoFontGamepad27")
-	label:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-	label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
-
 	self.strip = window
-	self.stripLabel = label
+	self.stripTabs = {}
 	self:PositionStrip()
 	return window
 end
 
--- Anchored to the screen rather than to the chat box.
---
--- The chat container is where the invisible buttons live, and anchoring to something whose
--- position cannot be confirmed is how this went wrong the first time. GuiRoot is unambiguous, and
--- the console chat sits at a fixed place anyway: bottom right, 215 up. Both offsets are settings,
--- so fitting it is a command rather than a build.
+-- Anchored TOP to GuiRoot, with both offsets settings. X moves it sideways from the centre, Y
+-- down from the top, which is the easiest pair to describe to somebody nudging it into place.
 function tabs:PositionStrip()
 	if not self.strip then
 		return
 	end
-
-	local x = (addon.sv and addon.sv.tabStripX) or TAB_STRIP_X
-	local y = (addon.sv and addon.sv.tabStripY) or TAB_STRIP_Y
+	local x = (addon.sv and addon.sv.tabStripX) or 0
+	local y = (addon.sv and addon.sv.tabStripY) or 110
 	self.strip:ClearAnchors()
-	self.strip:SetAnchor(BOTTOMRIGHT, GuiRoot, BOTTOMRIGHT, x, y)
+	self.strip:SetAnchor(TOP, GuiRoot, TOP, x, y)
+end
+
+-- One backdrop and one label per tab, made once and reused.
+function tabs:AcquireStripTab(index)
+	local existing = self.stripTabs[index]
+	if existing then
+		return existing
+	end
+
+	local name = string.format("%sTab%d", STRIP_NAME, index)
+	local backdrop = WINDOW_MANAGER:CreateControl(name, self.strip, CT_BACKDROP)
+	backdrop:SetEdgeTexture("", 1, 1, 1)
+	backdrop:SetHeight(STRIP_HEIGHT - 6)
+
+	local label = WINDOW_MANAGER:CreateControl(name .. "Label", backdrop, CT_LABEL)
+	label:SetAnchorFill()
+	label:SetFont("ZoFontGame")
+	label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+	label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+
+	local entry = { backdrop = backdrop, label = label }
+	self.stripTabs[index] = entry
+	return entry
 end
 
 function tabs:RefreshStrip(container)
 	container = container or GetContainer()
 	local strip = self:EnsureStrip()
-	if not strip or not container then
+	if not strip then
 		return
 	end
 
-	local wanted = addon.sv and addon.sv.guildTabsEnabled and #container.windows > 1
+	local wanted = container and addon.sv and addon.sv.guildTabsEnabled and #container.windows > 1
 	strip:SetHidden(not wanted)
 	if not wanted then
 		return
 	end
 
 	local activeIndex = self:GetActiveIndex(container)
-	local parts = {}
-	for index = 1, #container.windows do
+	local count = #container.windows
+
+	-- Laid out centre-outwards: total width first, then each tab from the left edge of that.
+	local widths = {}
+	local total = 0
+	for index = 1, count do
+		local entry = self:AcquireStripTab(index)
 		local name = container:GetTabName(index) or tostring(index)
-		local colour = index == activeIndex and ACTIVE_COLOUR or INACTIVE_COLOUR
-		parts[#parts + 1] = string.format("|c%s%s|r", colour, name)
+		entry.label:SetText(name)
+		local width = entry.label:GetTextWidth() + TAB_PADDING_X * 2
+		widths[index] = width
+		total = total + width + (index > 1 and TAB_GAP or 0)
 	end
 
-	self.stripLabel:SetText(table.concat(parts, "  "))
-	self:PositionStrip()
+	local x = -total / 2
+	for index = 1, count do
+		local entry = self.stripTabs[index]
+		local active = index == activeIndex
+
+		entry.backdrop:SetWidth(widths[index])
+		entry.backdrop:ClearAnchors()
+		entry.backdrop:SetAnchor(LEFT, strip, CENTER, x, 0)
+		entry.backdrop:SetHidden(false)
+		entry.backdrop:SetCenterColor(0, 0, 0, active and 0.8 or 0.4)
+		Colour(entry.label, 1, 1, 1, active and 1 or 0.45)
+
+		x = x + widths[index] + TAB_GAP
+	end
+
+	-- Tabs left over from a guild that has gone.
+	for index = count + 1, #self.stripTabs do
+		self.stripTabs[index].backdrop:SetHidden(true)
+	end
 end
 
 function tabs:SelectTab(index, announce)

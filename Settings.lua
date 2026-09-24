@@ -132,6 +132,54 @@ function addon:InitSettings()
 		end)
 	end
 
+	-- Where the tab strip sits. Sliders rather than a command, because nudging something into
+	-- place is exactly what a slider is for.
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHATASSISTANT_TABSTRIP_X),
+			tooltip = GetString(SI_PBSCHATASSISTANT_TABSTRIP_POS_TOOLTIP),
+			min = -800,
+			max = 800,
+			step = 10,
+			default = 0,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self.sv.tabStripX
+			end,
+			setFunction = function(value)
+				self.sv.tabStripX = value
+				if self.chatTabs then
+					self.chatTabs:PositionStrip()
+				end
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHATASSISTANT_TABSTRIP_Y),
+			tooltip = GetString(SI_PBSCHATASSISTANT_TABSTRIP_POS_TOOLTIP),
+			min = 0,
+			max = 1000,
+			step = 10,
+			default = 110,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self.sv.tabStripY
+			end,
+			setFunction = function(value)
+				self.sv.tabStripY = value
+				if self.chatTabs then
+					self.chatTabs:PositionStrip()
+				end
+			end
+		}
+	)
+
 	-- Which channel a session starts on.
 	--
 	-- The item list is rebuilt whenever this panel is opened rather than fixed when the add-on

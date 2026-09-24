@@ -100,8 +100,8 @@ local DEFAULTS = {
 	-- Where the tab strip sits, as an offset from the bottom right of the screen. The console
 	-- chat box is at a fixed place, and these are settings so fitting the strip to it is a
 	-- command rather than a build.
-	tabStripX = -20,
-	tabStripY = -215,
+	tabStripX = 0,
+	tabStripY = 110,
 	-- 0 means leave the channel wherever the game left it. Any other value is a channel id
 	-- applied once when the player enters the world; see ApplyDefaultChannel.
 	defaultChannel = 0,
@@ -145,7 +145,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.21.0"
+local VERSION = "1.22.0"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
