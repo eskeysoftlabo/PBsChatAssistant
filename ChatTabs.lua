@@ -53,14 +53,36 @@ local function GuildCategories(index)
 	return guild[index], officer[index]
 end
 
+local function GuildChannel(index)
+	local channels = { CHAT_CHANNEL_GUILD_1, CHAT_CHANNEL_GUILD_2, CHAT_CHANNEL_GUILD_3,
+		CHAT_CHANNEL_GUILD_4, CHAT_CHANNEL_GUILD_5 }
+	return channels[index]
+end
+
+local function GuildIndexForChannel(channelId)
+	local guild = { CHAT_CHANNEL_GUILD_1, CHAT_CHANNEL_GUILD_2, CHAT_CHANNEL_GUILD_3,
+		CHAT_CHANNEL_GUILD_4, CHAT_CHANNEL_GUILD_5 }
+	local officer = { CHAT_CHANNEL_OFFICER_1, CHAT_CHANNEL_OFFICER_2, CHAT_CHANNEL_OFFICER_3,
+		CHAT_CHANNEL_OFFICER_4, CHAT_CHANNEL_OFFICER_5 }
+	for index = 1, 5 do
+		if channelId == guild[index] or channelId == officer[index] then
+			return index
+		end
+	end
+	return nil
+end
+
 -- Which guilds the player is in, by slot, with the names the tabs are called after.
 function tabs:GuildSlots()
 	local slots = {}
-	local numGuilds = GetNumGuilds and GetNumGuilds() or 0
+	local numGuilds = type(GetNumGuilds) == "function" and GetNumGuilds() or 0
 	for guildIndex = 1, numGuilds do
-		local guildId = GetGuildId and GetGuildId(guildIndex)
-		local name = guildId and GetGuildName and GetGuildName(guildId)
-		if guildId then
+		local guildId = type(GetGuildId) == "function" and GetGuildId(guildIndex)
+		if guildId and guildId ~= 0 then
+			local name = type(GetGuildName) == "function" and GetGuildName(guildId)
+			if not name or name == "" then
+				name = "#" .. tostring(guildId)
+			end
 			slots[#slots + 1] = { index = guildIndex, guildId = guildId, name = name }
 		end
 	end
@@ -106,6 +128,28 @@ local function FindTabByName(container, name)
 		end
 	end
 	return nil
+end
+
+local function RemoveAllTabsNamed(container, name)
+	for index = #container.windows, 2, -1 do
+		if container:GetTabName(index) == name then
+			container:RemoveWindow(index)
+		end
+	end
+end
+
+-- Keep exactly one tab of this name. Removing from the end prevents index shifts from skipping a
+-- duplicate; the returned index follows the kept tab if a lower duplicate was removed.
+local function RemoveDuplicateTabsNamed(container, name, keepIndex)
+	for index = #container.windows, 2, -1 do
+		if index ~= keepIndex and container:GetTabName(index) == name then
+			container:RemoveWindow(index)
+			if index < keepIndex then
+				keepIndex = keepIndex - 1
+			end
+		end
+	end
+	return keepIndex
 end
 
 ----------------------------------------------------------------------------------------------
@@ -178,14 +222,17 @@ function tabs:Reconcile()
 			seen[tostring(guildId)] = true
 
 			local tabIndex = FindTabByName(container, name)
-			if not tabIndex then
-				-- Renamed guild: reuse the tab we made for it rather than leaving an orphan.
-				local previous = known[tostring(guildId)]
-				if previous then
-					tabIndex = FindTabByName(container, previous)
-					if tabIndex then
-						container:SetTabName(tabIndex, name)
-					end
+			local previous = known[tostring(guildId)]
+			if previous and previous ~= name then
+				local previousIndex = FindTabByName(container, previous)
+				if tabIndex then
+					-- A current-name tab already exists, so every old-name tab is stale.
+					RemoveAllTabsNamed(container, previous)
+					tabIndex = FindTabByName(container, name)
+				elseif previousIndex then
+					-- Otherwise preserve the existing buffer and filters by renaming it.
+					container:SetTabName(previousIndex, name)
+					tabIndex = previousIndex
 				end
 			end
 
@@ -195,6 +242,7 @@ function tabs:Reconcile()
 			end
 
 			if tabIndex then
+				tabIndex = RemoveDuplicateTabsNamed(container, name, tabIndex)
 				known[tostring(guildId)] = name
 				self:RouteGuildTab(container, tabIndex, guildCategory, officerCategory)
 			end
@@ -204,10 +252,7 @@ function tabs:Reconcile()
 	-- Tabs for guilds no longer joined.
 	for guildId, name in pairs(known) do
 		if not seen[guildId] then
-			local tabIndex = FindTabByName(container, name)
-			if tabIndex and tabIndex > 1 then
-				container:RemoveWindow(tabIndex)
-			end
+			RemoveAllTabsNamed(container, name)
 			known[guildId] = nil
 		end
 	end
@@ -253,14 +298,37 @@ function tabs:RemoveAll()
 			container:SetWindowFilterEnabled(1, officerCategory, true)
 		end
 	end
+
+	self:RefreshStrip(container)
 end
 
 ----------------------------------------------------------------------------------------------
 -- Selecting
 ----------------------------------------------------------------------------------------------
 
--- HandleTabClick hides every window but the chosen one, so the visible window is the active tab.
+-- currentBuffer is the client's authoritative selected-tab state. Visibility is only a fallback:
+-- the game can hide chat controls as part of HUD/minimise state, which is not a tab selection.
 function tabs:GetActiveIndex(container)
+	if container.currentBuffer then
+		for index, window in ipairs(container.windows) do
+			if window.buffer == container.currentBuffer then
+				return index
+			end
+		end
+	end
+
+	if container.tabGroup and type(container.tabGroup.GetClickedButton) == "function" then
+		local clicked = container.tabGroup:GetClickedButton()
+		if clicked and clicked.index and container.windows[clicked.index] then
+			return clicked.index
+		end
+	end
+
+	local remembered = self.activeIndices and self.activeIndices[container]
+	if remembered and container.windows[remembered] then
+		return remembered
+	end
+
 	for index = 1, #container.windows do
 		if not container.windows[index]:IsHidden() then
 			return index
@@ -269,86 +337,29 @@ function tabs:GetActiveIndex(container)
 	return 1
 end
 
--- The tab strip, drawn entirely by this add-on.
+-- The active tab, as one line of text.
 --
--- The client's own tab buttons never appear on console. Measured: width 36, height 24, alpha 1,
--- hidden false, parent ZO_GamepadTextChat itself shown with alpha 1 -- every reading says visible
--- and nothing is on screen, whether they are placed above the chat box or inside it. They keep
--- the job they are good at, which is owning the buffers, the filters and the switching.
+-- The strip of per-tab controls is abandoned, and it was never the drawing that failed: the window
+-- was never created at all. /pbchat tabs reported "strip false", because it was built lazily from
+-- inside RefreshStrip and nothing ever reached that call. The draw test, which creates its control
+-- immediately and unconditionally, displayed every time.
 --
--- Everything below is this add-on's own controls: a window, and per tab a backdrop with a label.
--- The starting geometry is deliberately the one configuration known to have displayed on this
--- platform -- a top level window of 1100x40 anchored TOP to GuiRoot at y 110, labels in
--- ZoFontGame -- because the point of this pass is to be seen first and pretty second. Where it
--- sits is a setting, so it can be moved to wherever it belongs without another build.
-local STRIP_NAME = "PBsChatAssistantTabStrip"
-local STRIP_WIDTH = 1100
-local STRIP_HEIGHT = 40
-local TAB_PADDING_X = 14
-local TAB_GAP = 8
+-- So this is built the way the draw test is: made once, on entering the world, before anything can
+-- decide not to. One label, naming the active tab, in the colour that tab's chat already uses.
+local INDICATOR_NAME = "PBsChatAssistantTabIndicator"
+local INDICATOR_WIDTH = 1100
+local INDICATOR_DRAW_LAYERS = {
+	background = DL_BACKGROUND,
+	controls = DL_CONTROLS,
+	text = DL_TEXT,
+	overlay = DL_OVERLAY,
+}
 
-local function Colour(control, r, g, b, a)
-	if control and control.SetColor then
-		control:SetColor(r, g, b, a)
-	end
-end
-
-function tabs:EnsureStrip()
-	if self.strip then
-		return self.strip
-	end
-	if type(WINDOW_MANAGER) ~= "table" then
-		return nil
-	end
-
-	-- Built the same way as the draw test, which is the only arrangement seen to display on this
-	-- platform: a top level window, one backdrop anchored fill, labels on top. The previous
-	-- version gave every tab its own backdrop and called SetEdgeTexture with an empty string,
-	-- neither of which the working one did, and nothing appeared.
-	local window = WINDOW_MANAGER:CreateTopLevelWindow(STRIP_NAME)
-	window:SetDimensions(STRIP_WIDTH, STRIP_HEIGHT)
-	window:SetMouseEnabled(false)
-	window:SetHidden(true)
-
-	local backdrop = WINDOW_MANAGER:CreateControl(STRIP_NAME .. "Bg", window, CT_BACKDROP)
-	backdrop:SetAnchorFill()
-	backdrop:SetCenterColor(0, 0, 0, 0.6)
-	backdrop:SetEdgeColor(0, 0, 0, 0)
-
-	self.strip = window
-	self.stripBackdrop = backdrop
-	self.stripTabs = {}
-	self:PositionStrip()
-	return window
-end
-
--- One label per tab, and nothing else. Colour is the whole of the styling: the active tab white
--- and solid, the rest grey.
-function tabs:AcquireStripTab(index)
-	local existing = self.stripTabs[index]
-	if existing then
-		return existing
-	end
-
-	local label = WINDOW_MANAGER:CreateControl(string.format("%sLabel%d", STRIP_NAME, index),
-		self.strip, CT_LABEL)
-	label:SetFont("ZoFontGame")
-	label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
-	label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
-	label:SetHeight(STRIP_HEIGHT)
-
-	self.stripTabs[index] = label
-	return label
-end
-
--- The offsets have meant three different things: an inset from the chat box, an offset from the
--- bottom right of the screen, and now a position measured from the top centre. Saved values only
--- take a default when the save is new, so a value written under the old meaning stays and is read
--- under the new one -- which is how the strip came to be anchored 215 pixels above the top of the
--- screen and looked, for several rounds, exactly like a strip that would not draw.
---
--- Moved once to the position the draw test proved visible, with a marker so a deliberate choice
--- afterwards is left alone.
+-- The offsets have meant three different things across these releases: an inset from the chat box,
+-- an offset from the bottom right of the screen, and now a position measured from the top centre.
+-- A saved value only takes a default when the save is new, so one written under the old meaning
+-- stays and is read under the new one, which is how the strip came to sit 215 pixels above the top
+-- of the screen and looked, for several rounds, exactly like something that would not draw.
 function tabs:MigrateStripPosition()
 	if not addon.sv or addon.sv.tabStripPlaced then
 		return
@@ -356,54 +367,268 @@ function tabs:MigrateStripPosition()
 	addon.sv.tabStripPlaced = true
 	addon.sv.tabStripX = 0
 	addon.sv.tabStripY = 110
+	addon.sv.tabTextSize = addon.sv.tabTextSize or 28
+end
+
+function tabs:EnsureIndicator()
+	if self.indicator then
+		return self.indicator
+	end
+	-- WINDOW_MANAGER is supplied by the client and is not guaranteed to report Lua type "table"
+	-- on every platform. The old type check prevented this window being created on such clients,
+	-- while DrawTest (which had no check) continued to work.
+	if not WINDOW_MANAGER then
+		return nil
+	end
+
+	local window = WINDOW_MANAGER:CreateTopLevelWindow(INDICATOR_NAME)
+	window:SetMouseEnabled(false)
+	if window.SetDrawTier and DT_HIGH then
+		window:SetDrawTier(DT_HIGH)
+	end
+
+	local label = WINDOW_MANAGER:CreateControl(INDICATOR_NAME .. "Label", window, CT_LABEL)
+	label:SetAnchorFill()
+	label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+	label:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+	if label.SetDrawLayer and DL_TEXT then
+		label:SetDrawLayer(DL_TEXT)
+	end
+
+	self.indicator = window
+	self.indicatorLabel = label
+	self:ApplyIndicatorStyle()
+	return window
+end
+
+-- A tab can be selected by this add-on or by the client's own controls. Watching the container's
+-- single selection method keeps the indicator correct for both without polling every frame.
+function tabs:HookContainer(container)
+	if not container or type(ZO_PostHook) ~= "function" then
+		return false
+	end
+
+	self.hookedContainers = self.hookedContainers or {}
+	if self.hookedContainers[container] then
+		return true
+	end
+	self.hookedContainers[container] = true
+
+	ZO_PostHook(container, "HandleTabClick", function(_, tab)
+		self:OnTabSelected(container, tab and tab.index)
+	end)
+	return true
+end
+
+-- Keep changes made by the game's channel selector in step with the visible tab as well. Without
+-- this reverse direction, choosing a guild destination while the normal tab is visible produces
+-- exactly the misleading state the indicator is meant to prevent.
+function tabs:HookChatChannel()
+	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
+	if not chat or self.hookedChat == chat or type(ZO_PostHook) ~= "function" then
+		return
+	end
+	self.hookedChat = chat
+	ZO_PostHook(chat, "SetChannel", function(_, channelId)
+		if not self.settingChannel and addon.sv and addon.sv.guildTabsEnabled then
+			self:SelectTabForChannel(channelId)
+		end
+	end)
+end
+
+function tabs:SetChatChannel(chat, channelId)
+	self.settingChannel = true
+	chat:SetChannel(channelId)
+	self.settingChannel = false
+end
+
+function tabs:NormalChannel(chat)
+	local current = chat and chat.currentChannel
+	if current and not GuildIndexForChannel(current) then
+		self.normalChannel = current
+		return current
+	end
+
+	local configured = addon.sv and addon.sv.defaultChannel
+	if self.normalChannel and not GuildIndexForChannel(self.normalChannel) then
+		return self.normalChannel
+	elseif configured and configured ~= 0 and not GuildIndexForChannel(configured) then
+		return configured
+	elseif chat and type(chat.GetDefaultChatChannel) == "function" then
+		local channelId = chat:GetDefaultChatChannel()
+		if channelId and not GuildIndexForChannel(channelId) then
+			return channelId
+		end
+	end
+	return CHAT_CHANNEL_ZONE or CHAT_CHANNEL_SAY
+end
+
+-- A guild tab is both a view of that guild's messages and the destination for the next message.
+-- The normal tab is a mixed view, so selecting it deliberately leaves the current destination
+-- alone rather than guessing zone, say or whichever channel the player last used.
+function tabs:SetOutgoingChannelForTab(container, index)
+	if not container then
+		return false
+	end
+	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
+	if not chat or type(chat.SetChannel) ~= "function" then
+		return false
+	end
+
+	if index == 1 then
+		local channelId = self:NormalChannel(chat)
+		if channelId then
+			self.normalChannel = channelId
+			if chat.currentChannel ~= channelId then
+				self:SetChatChannel(chat, channelId)
+			end
+			return true
+		end
+		return false
+	end
+
+	local name = container:GetTabName(index)
+	for guildIndex = 1, 5 do
+		local guildId = GetGuildId and GetGuildId(guildIndex)
+		local guildName = guildId and GetGuildName and GetGuildName(guildId)
+		if guildName and guildName == name then
+			local channelId = GuildChannel(guildIndex)
+			if channelId and chat and type(chat.SetChannel) == "function" then
+				if chat.currentChannel and not GuildIndexForChannel(chat.currentChannel) then
+					self.normalChannel = chat.currentChannel
+				end
+				self:SetChatChannel(chat, channelId)
+				return true
+			end
+			return false
+		end
+	end
+
+	return false
+end
+
+function tabs:OnTabSelected(container, selectedIndex)
+	local index = selectedIndex or self:GetActiveIndex(container)
+	if not container.windows[index] then
+		index = self:GetActiveIndex(container)
+	end
+	self.activeIndices = self.activeIndices or {}
+	self.activeIndices[container] = index
+	self:RefreshStrip(container)
+	if not self.suppressChannelSync then
+		self:SetOutgoingChannelForTab(container, index)
+	end
+end
+
+function tabs:ApplyIndicatorStyle()
+	if not self.indicator then
+		return
+	end
+
+	local size = (addon.sv and addon.sv.tabTextSize) or 28
+	local x = (addon.sv and addon.sv.tabStripX) or 0
+	local y = (addon.sv and addon.sv.tabStripY) or 110
+
+	-- Y is measured down from the top, so a negative one is always wrong. Clamped, because an
+	-- offset that puts the text off the screen looks exactly like text that was never drawn, and
+	-- telling those apart has already cost enough.
+	if y < 0 then
+		y = 0
+	end
+
+	self.indicator:SetDimensions(INDICATOR_WIDTH, size + 12)
+	self.indicator:ClearAnchors()
+	self.indicator:SetAnchor(TOP, GuiRoot, TOP, x, y)
+
+	-- The size is the player's, so the font is built from one rather than naming a ready-made
+	-- font of the client's.
+	self.indicatorLabel:SetFont(string.format("$(GAMEPAD_MEDIUM_FONT)|%d|soft-shadow-thick", size))
+	local layerName = (addon.sv and addon.sv.tabTextLayer) or "text"
+	local drawLayer = INDICATOR_DRAW_LAYERS[layerName] or DL_TEXT
+	if drawLayer and self.indicatorLabel.SetDrawLayer then
+		self.indicatorLabel:SetDrawLayer(drawLayer)
+	end
+end
+
+function tabs:IsHUDShowing()
+	return not SCENE_MANAGER or type(SCENE_MANAGER.IsShowing) ~= "function"
+		or SCENE_MANAGER:IsShowing("hud")
+end
+
+function tabs:UpdateIndicatorVisibility()
+	if self.indicator then
+		self.indicator:SetHidden(not self.indicatorWanted or not self:IsHUDShowing())
+	end
+end
+
+function tabs:HookHUDScene()
+	if self.hudSceneHooked or not SCENE_MANAGER or type(SCENE_MANAGER.GetScene) ~= "function" then
+		return
+	end
+	local scene = SCENE_MANAGER:GetScene("hud")
+	if scene and type(scene.RegisterCallback) == "function" then
+		self.hudSceneHooked = true
+		scene:RegisterCallback("StateChange", function()
+			self:UpdateIndicatorVisibility()
+		end)
+	end
+end
+
+-- Kept as the public name used by settings and slash commands in earlier builds.
+function tabs:PositionStrip()
+	self:ApplyIndicatorStyle()
+end
+
+-- White for the normal tab; for a guild tab, the colour that guild's messages are already written
+-- in, so the indicator matches the chat below it rather than inventing a palette.
+function tabs:IndicatorColour(container, index)
+	if index == 1 then
+		return 1, 1, 1, 1
+	end
+
+	local name = container:GetTabName(index)
+	for guildIndex = 1, 5 do
+		local guildId = GetGuildId and GetGuildId(guildIndex)
+		local guildName = guildId and GetGuildName and GetGuildName(guildId)
+		if guildName and guildName == name then
+			local category = GuildCategories(guildIndex)
+			if category and type(GetChatCategoryColor) == "function" then
+				local r, g, b = GetChatCategoryColor(category)
+				if r then
+					return r, g, b, 1
+				end
+			end
+		end
+	end
+
+	return 1, 1, 1, 1
 end
 
 function tabs:RefreshStrip(container)
 	self:MigrateStripPosition()
 
 	container = container or GetContainer()
-	local strip = self:EnsureStrip()
-	if not strip then
+	self:HookContainer(container)
+	self:HookChatChannel()
+	self:HookHUDScene()
+	local window = self:EnsureIndicator()
+	if not window then
 		return
 	end
 
-	local wanted = container and addon.sv and addon.sv.guildTabsEnabled and #container.windows > 1
-	strip:SetHidden(not wanted)
+	self:ApplyIndicatorStyle()
+
+	local wanted = container and addon.sv and addon.sv.guildTabsEnabled
+		and addon.sv.tabNameVisible ~= false and #container.windows > 0
+	self.indicatorWanted = wanted
+	self:UpdateIndicatorVisibility()
 	if not wanted then
 		return
 	end
 
-	local activeIndex = self:GetActiveIndex(container)
-	local count = #container.windows
-
-	local widths = {}
-	local total = 0
-	for index = 1, count do
-		local label = self:AcquireStripTab(index)
-		label:SetText(container:GetTabName(index) or tostring(index))
-		local width = label:GetTextWidth() + TAB_PADDING_X * 2
-		widths[index] = width
-		total = total + width + (index > 1 and TAB_GAP or 0)
-	end
-
-	local x = -total / 2
-	for index = 1, count do
-		local label = self.stripTabs[index]
-		local active = index == activeIndex
-
-		label:SetWidth(widths[index])
-		label:ClearAnchors()
-		label:SetAnchor(LEFT, self.strip, CENTER, x, 0)
-		label:SetHidden(false)
-		label:SetColor(1, 1, 1, active and 1 or 0.4)
-
-		x = x + widths[index] + TAB_GAP
-	end
-
-	-- Tabs left over from a guild that has gone.
-	for index = count + 1, #self.stripTabs do
-		self.stripTabs[index]:SetHidden(true)
-	end
+	local index = self:GetActiveIndex(container)
+	self.indicatorLabel:SetText(container:GetTabName(index) or tostring(index))
+	self.indicatorLabel:SetColor(self:IndicatorColour(container, index))
 end
 
 -- The smallest possible question: can this add-on put anything on screen at all?
@@ -451,23 +676,70 @@ function tabs:DrawTest(on)
 	Print("draw test on: red bar with PB DRAW TEST, top centre, 110 down")
 end
 
-function tabs:SelectTab(index, announce)
+function tabs:SelectTab(index, announce, syncChannel)
 	local container = GetContainer()
 	local window = container and container.windows[index]
 	if not window then
 		return false
 	end
 
-	if container.tabGroup and window.tab then
-		container.tabGroup:SetClickedButton(window.tab)
+	local hooked = self:HookContainer(container)
+	local previousSuppression = self.suppressChannelSync
+	if syncChannel == false then
+		self.suppressChannelSync = true
 	end
-	container:HandleTabClick(window.tab)
-	self:RefreshStrip(container)
+	if container.tabGroup and window.tab then
+		-- SetClickedButton invokes HandleTabClick through the tab's selection callback.
+		container.tabGroup:SetClickedButton(window.tab)
+		-- A restored tab group can already consider the button selected while currentBuffer still
+		-- points elsewhere. In that state SetClickedButton does not invoke its callback, so make the
+		-- actual buffer selection explicit only when the first call did not take effect.
+		if self:GetActiveIndex(container) ~= index then
+			container:HandleTabClick(window.tab)
+		end
+	else
+		container:HandleTabClick(window.tab)
+	end
+	-- ZO_PostHook handles normal clients, including selections made by the client itself. Keep the
+	-- direct path for a client where post-hooks are unavailable.
+	if not hooked then
+		self:OnTabSelected(container, index)
+	end
+	self.suppressChannelSync = previousSuppression
+	local selected = self:GetActiveIndex(container) == index
+	if selected then
+		self:RefreshStrip(container)
+	end
 
-	if announce then
+	if announce and selected then
 		Print(GetString(SI_PBSCHATASSISTANT_TAB_LABEL), tostring(container:GetTabName(index)))
 	end
-	return true
+	return selected
+end
+
+-- Match the visible tab to a channel chosen by the login default. Officer chat shares its
+-- guild's tab. All non-guild channels use the normal mixed tab. Channel synchronisation is
+-- suppressed here so an officer default remains officer rather than being replaced by guild chat.
+function tabs:SelectTabForChannel(channelId)
+	local container = GetContainer()
+	if not container then
+		return false
+	end
+
+	local guildIndex = GuildIndexForChannel(channelId)
+	if not guildIndex then
+		self.normalChannel = channelId
+		return self:SelectTab(1, false, false)
+	end
+
+	local guildId = GetGuildId and GetGuildId(guildIndex)
+	local guildName = guildId and GetGuildName and GetGuildName(guildId)
+	local tabIndex = guildName and FindTabByName(container, guildName)
+	if not tabIndex then
+		self:Reconcile()
+		tabIndex = guildName and FindTabByName(container, guildName)
+	end
+	return tabIndex and self:SelectTab(tabIndex, false, false) or false
 end
 
 function tabs:Cycle(step)
@@ -483,23 +755,20 @@ function tabs:Cycle(step)
 
 	local current = self:GetActiveIndex(container)
 	local nextIndex = ((current - 1 + step) % count) + 1
-	return self:SelectTab(nextIndex, true)
+	-- The indicator itself reports the new tab. Avoid adding a second announcement to normal chat.
+	return self:SelectTab(nextIndex, false)
 end
 
 function tabs:PrintStatus()
-	local strip = self.strip
-	Print("strip %s, hidden %s, drawn tabs %d", tostring(strip ~= nil),
-		tostring(strip and strip:IsHidden()), self.stripTabs and #self.stripTabs or 0)
-
 	local container = GetContainer()
 	if not container then
 		Print("no chat container")
 		return
 	end
 
-	local strip = self.strip
-	Print("strip %s, hidden %s, drawn tabs %d", tostring(strip ~= nil),
-		tostring(strip and strip:IsHidden()), self.stripTabs and #self.stripTabs or 0)
+	local window = self.indicator
+	Print("indicator %s, hidden %s, size %s", tostring(window ~= nil),
+		tostring(window and window:IsHidden()), tostring(addon.sv and addon.sv.tabTextSize))
 
 	local chat = type(ZO_GetChatSystem) == "function" and ZO_GetChatSystem()
 	Print("tabs %d, active %d, guild tabs %s, guilds %d", #container.windows,

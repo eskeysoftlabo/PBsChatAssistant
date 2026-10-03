@@ -5,6 +5,13 @@ end
 
 local addon = PBS_CHAT_ASSISTANT
 
+local function AddHeading(settings, LibHarvensAddonSettings, label)
+	settings:AddSetting({
+		type = LibHarvensAddonSettings.ST_SECTION or LibHarvensAddonSettings.ST_LABEL,
+		label = label,
+	})
+end
+
 -- The wait, and nothing else.
 --
 -- It is the only setting a player has any reason to reach for. Everything else -- arming Enter,
@@ -70,69 +77,57 @@ function addon:InitSettings()
 		}
 	)
 
-	-- One row per guild slot, not one switch for all five.
-	--
-	-- The label has to say which guild it is, and guild names are not known when this panel is
-	-- built: it is created at add-on load, well before guild data arrives. So the rows are made
-	-- once with placeholder labels and their text is refreshed whenever the settings screen is
-	-- about to show. AddonSelected alone is not enough, since it does not fire when the panel is
-	-- revisited; the scene's own state change does.
-	local guildRows = {}
-	for slotIndex = 1, 5 do
-		local row = settings:AddSetting(
+	-- LibHarvens rows have fixed labels. This panel is therefore built on the first
+	-- EVENT_PLAYER_ACTIVATED, when the guild list is available, and only joined guilds get rows.
+	-- Capture the guild ID rather than its slot so the switch keeps referring to the same guild if
+	-- the game's slot order changes while the panel exists. This is the same pattern as ChatFilter.
+	local guilds = self.chatTabs and self.chatTabs:GuildSlots() or {}
+	if #guilds == 0 then
+		settings:AddSetting(
 			{
+				type = LibHarvensAddonSettings.ST_LABEL,
+				label = GetString(SI_PBSCHATASSISTANT_GUILD_EMPTY),
+			}
+		)
+	else
+		for _, guild in ipairs(guilds) do
+			local guildId = guild.guildId
+			settings:AddSetting({
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
-				label = zo_strformat(GetString(SI_PBSCHATASSISTANT_GUILDINMAIN), slotIndex),
+				label = zo_strformat(GetString(SI_PBSCHATASSISTANT_GUILDINMAIN), guild.name),
 				tooltip = GetString(SI_PBSCHATASSISTANT_GUILDINMAIN_TOOLTIP),
 				default = true,
 				getFunction = function()
-					local guildId = GetGuildId and GetGuildId(slotIndex)
 					return not self.chatTabs or self.chatTabs:IsGuildInMainTab(guildId)
 				end,
 				setFunction = function(value)
-					local guildId = GetGuildId and GetGuildId(slotIndex)
-					if guildId and self.chatTabs then
+					if self.chatTabs then
 						self.chatTabs:SetGuildInMainTab(guildId, value)
 					end
 				end
-			}
-		)
-		guildRows[slotIndex] = row
-	end
-
-	local function RefreshGuildRowLabels()
-		for slotIndex = 1, 5 do
-			local row = guildRows[slotIndex]
-			if row then
-				local guildId = GetGuildId and GetGuildId(slotIndex)
-				local name = guildId and GetGuildName and GetGuildName(guildId)
-				row.label = zo_strformat(GetString(SI_PBSCHATASSISTANT_GUILDINMAIN),
-					(name and name ~= "") and name or slotIndex)
-			end
+			})
 		end
 	end
 
-	RefreshGuildRowLabels()
-
-	CALLBACK_MANAGER:RegisterCallback(
-		"LibHarvensAddonSettings_AddonSelected",
-		function(_, addonSettings)
-			if addonSettings == settings then
-				RefreshGuildRowLabels()
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHATASSISTANT_TAB_VISIBLE),
+			tooltip = GetString(SI_PBSCHATASSISTANT_TAB_VISIBLE_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self.sv.tabNameVisible ~= false
+			end,
+			setFunction = function(value)
+				self.sv.tabNameVisible = value
+				if self.chatTabs then
+					self.chatTabs:RefreshStrip()
+				end
 			end
-		end
+		}
 	)
 
-	local settingsScene = SCENE_MANAGER and SCENE_MANAGER:GetScene("LibHarvensAddonSettingsScene")
-	if settingsScene then
-		settingsScene:RegisterCallback("StateChange", function(_, state)
-			if state == SCENE_SHOWING then
-				RefreshGuildRowLabels()
-			end
-		end)
-	end
-
-	-- Where the tab strip sits. Sliders rather than a command, because nudging something into
+	-- Where the active-tab name sits. Sliders rather than a command, because nudging something into
 	-- place is exactly what a slider is for.
 	settings:AddSetting(
 		{
@@ -173,6 +168,62 @@ function addon:InitSettings()
 			end,
 			setFunction = function(value)
 				self.sv.tabStripY = value
+				if self.chatTabs then
+					self.chatTabs:PositionStrip()
+				end
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHATASSISTANT_TAB_TEXT_SIZE),
+			tooltip = GetString(SI_PBSCHATASSISTANT_TAB_TEXT_SIZE_TOOLTIP),
+			min = 14,
+			max = 72,
+			step = 1,
+			default = 28,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self.sv.tabTextSize
+			end,
+			setFunction = function(value)
+				self.sv.tabTextSize = value
+				if self.chatTabs then
+					self.chatTabs:PositionStrip()
+				end
+			end
+		}
+	)
+
+	local tabLayerItems = {
+		{ name = GetString(SI_PBSCHATASSISTANT_TAB_LAYER_BACKGROUND), data = { value = "background" } },
+		{ name = GetString(SI_PBSCHATASSISTANT_TAB_LAYER_CONTROLS), data = { value = "controls" } },
+		{ name = GetString(SI_PBSCHATASSISTANT_TAB_LAYER_TEXT), data = { value = "text" } },
+		{ name = GetString(SI_PBSCHATASSISTANT_TAB_LAYER_OVERLAY), data = { value = "overlay" } },
+	}
+	local function TabLayerName()
+		local wanted = self.sv.tabTextLayer or "text"
+		for _, item in ipairs(tabLayerItems) do
+			if item.data.value == wanted then
+				return item.name
+			end
+		end
+		return tabLayerItems[3].name
+	end
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_DROPDOWN,
+			label = GetString(SI_PBSCHATASSISTANT_TAB_LAYER),
+			tooltip = GetString(SI_PBSCHATASSISTANT_TAB_LAYER_TOOLTIP),
+			items = tabLayerItems,
+			default = tabLayerItems[3].name,
+			getFunction = TabLayerName,
+			setFunction = function(_, _, item)
+				self.sv.tabTextLayer = item.data.value
 				if self.chatTabs then
 					self.chatTabs:PositionStrip()
 				end
@@ -255,4 +306,54 @@ function addon:InitSettings()
 			end
 		}
 	)
+
+	-- Keep the filter sections after every existing setting. LibHarvens treats following rows as
+	-- belonging to the most recent heading, so placing them earlier folds unrelated rows into them.
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHATASSISTANT_RECRUIT_SECTION))
+	settings:AddSetting({
+		type = LibHarvensAddonSettings.ST_LABEL,
+		label = GetString(SI_PBSCHATASSISTANT_RECRUIT_NOTE),
+	})
+	settings:AddSetting({
+		type = LibHarvensAddonSettings.ST_CHECKBOX,
+		label = GetString(SI_PBSCHATASSISTANT_RECRUIT),
+		tooltip = GetString(SI_PBSCHATASSISTANT_RECRUIT_TOOLTIP),
+		default = false,
+		getFunction = function()
+			return self.sv.recruitFilterEnabled == true
+		end,
+		setFunction = function(value)
+			self.sv.recruitFilterEnabled = value
+		end,
+	})
+	settings:AddSetting({
+		type = LibHarvensAddonSettings.ST_CHECKBOX,
+		label = GetString(SI_PBSCHATASSISTANT_RECRUIT_WHISPER),
+		tooltip = GetString(SI_PBSCHATASSISTANT_RECRUIT_WHISPER_TOOLTIP),
+		default = false,
+		getFunction = function()
+			return self.sv.recruitFilterWhispers == true
+		end,
+		setFunction = function(value)
+			self.sv.recruitFilterWhispers = value
+		end,
+	})
+
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHATASSISTANT_NPC_SECTION))
+	settings:AddSetting({
+		type = LibHarvensAddonSettings.ST_LABEL,
+		label = GetString(SI_PBSCHATASSISTANT_NPC_NOTE),
+	})
+	settings:AddSetting({
+		type = LibHarvensAddonSettings.ST_CHECKBOX,
+		label = GetString(SI_PBSCHATASSISTANT_NPC),
+		tooltip = GetString(SI_PBSCHATASSISTANT_NPC_TOOLTIP),
+		default = false,
+		getFunction = function()
+			return self.sv.npcChatFilterEnabled == true
+		end,
+		setFunction = function(value)
+			self.sv.npcChatFilterEnabled = value
+		end,
+	})
 end

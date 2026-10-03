@@ -95,13 +95,22 @@ local DEFAULTS = {
 	-- Keyed by guild id; a guild with no entry is shown, which is how chat read before any of
 	-- this existed.
 	guildMainTab = {},
-	-- Vertical offset of the tab strip from the bottom inside edge of the chat box. Negative
-	-- moves it up into the box; a nudge is easier to type than another build.
-	-- Where the tab strip sits, as an offset from the bottom right of the screen. The console
-	-- chat box is at a fixed place, and these are settings so fitting the strip to it is a
-	-- command rather than a build.
+	-- Guild Finder adverts contain a guild link. Off by default, matching ChatFilter; whispers
+	-- remain exempt unless their separate switch is enabled.
+	recruitFilterEnabled = false,
+	recruitFilterWhispers = false,
+	-- NPC speech reaches chat through four dedicated monster channels. Off by default.
+	npcChatFilterEnabled = false,
+	-- Whether the active-tab name is drawn. Tab selection and outgoing-channel synchronization
+	-- continue when this is off.
+	tabNameVisible = true,
+	-- Position of the active-tab name: X from the screen centre, Y from the screen top.
 	tabStripX = 0,
 	tabStripY = 110,
+	-- Size of the active-tab name drawn on the HUD.
+	tabTextSize = 28,
+	-- Draw layer for the active-tab name: background, controls, text or overlay.
+	tabTextLayer = "text",
 	-- Set once the offsets above have been moved to the meaning they have now. See
 	-- MigrateStripPosition.
 	tabStripPlaced = false,
@@ -148,7 +157,7 @@ local CATCHER_CONTROL_NAMES = {
 -- Reported by /pbchat rather than announced at login. It was announced while the add-on was
 -- being built, because a build behaving unlike its code was the hardest thing to diagnose from
 -- inside the game. That is worth a command, not a line of chat on every login.
-local VERSION = "1.23.1"
+local VERSION = "1.29.2"
 
 -- How long the catcher waits for the box to close before coming back anyway.
 local RESUME_DEADLINE_SECONDS = 120
@@ -164,6 +173,8 @@ local WATCH_INTERVAL_MS = 200
 -- Long enough for guild membership to be known. The default is applied once, so a few seconds
 -- late costs nothing and being early costs the setting.
 local DEFAULT_CHANNEL_DELAY_MS = 3000
+local DEFAULT_CHANNEL_RETRY_MS = 1000
+local DEFAULT_CHANNEL_MAX_ATTEMPTS = 15
 
 local PROBE_SECONDS = 15
 local TRIAL_SECONDS = 20
@@ -465,25 +476,31 @@ end
 function addon:ApplyDefaultChannel()
 	local wanted = self.sv and self.sv.defaultChannel or 0
 	if wanted == 0 then
-		return
+		return true
 	end
 
 	local chat = GetChatSystem()
 	if not chat or type(chat.SetChannel) ~= "function" then
-		return
+		return false
 	end
 
 	for _, channel in ipairs(GetCyclableChannels()) do
 		if channel.id == wanted then
 			chat:SetChannel(wanted)
+			if self.chatTabs and self.sv.guildTabsEnabled then
+				if not self.chatTabs:SelectTabForChannel(wanted) then
+					return false
+				end
+			end
 			self:Log("default channel -> %s", tostring(self:GetChannelDisplayName(wanted)))
-			return
+			return true
 		end
 	end
 
 	-- Not available: no guild any more, or not grouped. Left alone rather than reset, since the
 	-- setting may become valid again later in the session.
 	self:Log("default channel %s not available", tostring(wanted))
+	return false
 end
 
 -- What L2 + D-pad Right does now: move to the next chat tab.
@@ -1051,6 +1068,11 @@ function addon:PrintStatus()
 	if PBS_CHAT_ASSISTANT_HUD_CHANNEL then PBS_CHAT_ASSISTANT_HUD_CHANNEL:PrintStatus() end
 	Print("watch %s, auto safe %s, edit focus %s, input screen %s", tostring(self.sv.watch),
 		tostring(self.sv.autoSafe), tostring(HasEditFocus()), tostring(IsInputScreenUp()))
+	Print("guild recruitment filter %s, whispers %s, hidden this session %d",
+		self.sv.recruitFilterEnabled and "on" or "off",
+		self.sv.recruitFilterWhispers and "on" or "off", self.hiddenRecruitment or 0)
+	Print("NPC chat filter %s, hidden this session %d",
+		self.sv.npcChatFilterEnabled and "on" or "off", self.hiddenNpcChat or 0)
 end
 
 -- Reports what the game thinks of the add-on's bindable actions.
@@ -1236,8 +1258,15 @@ function addon:InitSlashCommand()
 				self.sv.tabStripY = tonumber(argument:match("^y%s+(-?%d+)")) or self.sv.tabStripY
 				self.chatTabs:PositionStrip()
 				Print("tab strip y %d", self.sv.tabStripY)
+			elseif argument:match("^size%s") then
+				local size = tonumber(argument:match("^size%s+(%d+)"))
+				if size then
+					self.sv.tabTextSize = zo_clamp(size, 14, 72)
+					self.chatTabs:PositionStrip()
+				end
+				Print("tab text size %d", self.sv.tabTextSize)
 			elseif tonumber(argument) then
-				self.chatTabs:SelectTab(tonumber(argument), true)
+				self.chatTabs:SelectTab(tonumber(argument), false)
 			else
 				self.chatTabs:PrintStatus()
 			end
@@ -1245,6 +1274,23 @@ function addon:InitSlashCommand()
 			if self.chatTabs then
 				self.chatTabs:DrawTest(argument ~= "off")
 			end
+		elseif command == "recruit" then
+			local whisperState = argument:match("^whisper%s+(on)$")
+				or argument:match("^whisper%s+(off)$")
+			if whisperState then
+				self.sv.recruitFilterWhispers = whisperState == "on"
+			elseif argument == "on" or argument == "off" then
+				self.sv.recruitFilterEnabled = argument == "on"
+			end
+			Print("guild recruitment filter %s, whispers %s, hidden this session %d",
+				self.sv.recruitFilterEnabled and "on" or "off",
+				self.sv.recruitFilterWhispers and "on" or "off", self.hiddenRecruitment or 0)
+		elseif command == "npc" then
+			if argument == "on" or argument == "off" then
+				self.sv.npcChatFilterEnabled = argument == "on"
+			end
+			Print("NPC chat filter %s, hidden this session %d",
+				self.sv.npcChatFilterEnabled and "on" or "off", self.hiddenNpcChat or 0)
 		elseif command == "guildinmain" then
 			local slot, state = argument:match("^(%S*)%s*(%S*)$")
 			local slotIndex = tonumber(slot)
@@ -1362,6 +1408,9 @@ local function OnAddOnLoaded(_, name)
 		addon.sv.log = false
 	end
 
+	if addon.InstallRecruitmentFilter then
+		addon:InstallRecruitmentFilter()
+	end
 	addon:InitSlashCommand()
 	addon:ApplyCatcher()
 	addon:ApplyWatch()
@@ -1372,9 +1421,19 @@ local function OnAddOnLoaded(_, name)
 	addon.title = string.format("%s %s", DISPLAY_NAME, VERSION)
 	addon.author = AUTHOR
 	addon.version = VERSION
-	if addon.InitSettings then
-		addon:InitSettings()
-	end
+
+	-- LibHarvens setting labels are fixed when their rows are created. Wait until the player is
+	-- active so the guild list and real guild names are available, as ChatFilter does.
+	local SETTINGS_EVENT = addon.name .. "Settings"
+	em:RegisterForEvent(SETTINGS_EVENT, EVENT_PLAYER_ACTIVATED, function()
+		em:UnregisterForEvent(SETTINGS_EVENT, EVENT_PLAYER_ACTIVATED)
+		if not addon.settingsPanelBuilt then
+			addon.settingsPanelBuilt = true
+			if addon.InitSettings then
+				addon:InitSettings()
+			end
+		end
+	end)
 
 	-- Auto reads the binding route, which on PC depends on which UI is in front. Console never
 	-- fires this.
@@ -1408,26 +1467,26 @@ local function OnAddOnLoaded(_, name)
 	-- /pbchat trigger off turn those two off separately.
 	-- The login channel, applied exactly once.
 	--
-	-- EVENT_PLAYER_ACTIVATED fires after every loading screen, not only at login, and 1.15.0 never
-	-- unregistered it, so every zone change put the player back on the default channel and threw
-	-- away whatever they had switched to. Two guards now:
-	--
-	--   initial  The event's own flag for the first activation after login. A zone change reports
-	--            false and is ignored.
-	--   unregister  The handler removes itself on first use, so nothing later in this load can
-	--            reach it however the flag behaves.
+	-- EVENT_PLAYER_ACTIVATED fires after every loading screen. The handler unregisters itself on
+	-- the first event after this add-on loads, so zone changes cannot reapply the default. Do not
+	-- gate on the event's initial flag: /reloadui and add-on reloads can report false even though
+	-- this is the first activation this loaded copy sees, and the requested startup tab must still
+	-- be selected then.
 	--
 	-- Its own namespace, so unregistering it cannot take any other PLAYER_ACTIVATED handler with it.
 	local DEFAULT_CHANNEL_EVENT = addon.name .. "DefaultChannel"
 	em:RegisterForEvent(DEFAULT_CHANNEL_EVENT, EVENT_PLAYER_ACTIVATED, function(_, initial)
 		em:UnregisterForEvent(DEFAULT_CHANNEL_EVENT, EVENT_PLAYER_ACTIVATED)
 		addon:Log("player activated, initial %s", tostring(initial))
-		if initial == false then
-			return
+		local attempts = 0
+		local function ApplyInitialDefault()
+			attempts = attempts + 1
+			if addon:ApplyDefaultChannel() or attempts >= DEFAULT_CHANNEL_MAX_ATTEMPTS then
+				return
+			end
+			zo_callLater(ApplyInitialDefault, DEFAULT_CHANNEL_RETRY_MS)
 		end
-		zo_callLater(function()
-			addon:ApplyDefaultChannel()
-		end, DEFAULT_CHANNEL_DELAY_MS)
+		zo_callLater(ApplyInitialDefault, DEFAULT_CHANNEL_DELAY_MS)
 	end)
 
 	-- Guild membership decides the tabs, and it is not known the instant the world appears.
