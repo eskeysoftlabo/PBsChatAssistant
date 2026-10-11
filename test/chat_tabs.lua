@@ -41,6 +41,8 @@ CHAT_CHANNEL_GUILD_3, CHAT_CHANNEL_GUILD_4, CHAT_CHANNEL_GUILD_5 = 33, 34, 35
 CHAT_CHANNEL_OFFICER_1, CHAT_CHANNEL_OFFICER_2 = 41, 42
 CHAT_CHANNEL_OFFICER_3, CHAT_CHANNEL_OFFICER_4, CHAT_CHANNEL_OFFICER_5 = 43, 44, 45
 CHAT_CHANNEL_SAY, CHAT_CHANNEL_ZONE = 1, 7
+CHAT_CATEGORY_PARTY, CHAT_CHANNEL_PARTY = 5, 6
+SI_PBSCHATASSISTANT_GROUP_TAB = "group-tab"
 
 local sceneName = "hud"
 local hudScene = {}
@@ -51,7 +53,11 @@ SCENE_MANAGER = {
 }
 
 local guilds = { [1] = { id = 101, name = "Guild One" } }
-function GetNumGuilds() return 1 end
+function GetNumGuilds()
+	local count = 0
+	for _ in pairs(guilds) do count = count + 1 end
+	return count
+end
 function GetGuildId(index) return guilds[index] and guilds[index].id end
 function GetGuildName(id)
 	for _, guild in pairs(guilds) do
@@ -59,11 +65,20 @@ function GetGuildName(id)
 	end
 end
 function GetChatCategoryColor(category)
+	if category == CHAT_CATEGORY_PARTY then
+		return 0.1, 0.9, 0.3
+	end
+	if category == CHAT_CATEGORY_GUILD_2 then
+		return 0.7, 0.5, 0.2
+	end
 	assert(category == CHAT_CATEGORY_GUILD_1)
 	return 0.2, 0.4, 0.6
 end
 function GetNumChatCategories() return 25 end
-function GetString() return "Tab: %s" end
+function GetString(id)
+	if id == SI_PBSCHATASSISTANT_GROUP_TAB then return "Group" end
+	return "Tab: %s"
+end
 function d() end
 
 function ZO_PostHook(object, method, callback)
@@ -86,7 +101,11 @@ local container = {
 }
 function container:GetTabName(index) return self.names[index] end
 function container:SetTabName(index, name) self.names[index] = name end
-function container:SetWindowFilterEnabled() end
+container.filters = {}
+function container:SetWindowFilterEnabled(tabIndex, category, enabled)
+	self.filters[tabIndex] = self.filters[tabIndex] or {}
+	self.filters[tabIndex][category] = enabled
+end
 function container:AddWindow(name)
 	local index = #self.windows + 1
 	self.names[index] = name
@@ -95,6 +114,10 @@ end
 function container:RemoveWindow(index)
 	local removed = table.remove(self.windows, index)
 	table.remove(self.names, index)
+	-- The client keeps its per-tab filters by position and closes the gap itself.
+	for position = index, #self.windows + 1 do
+		self.filters[position] = self.filters[position + 1]
+	end
 	for newIndex, window in ipairs(self.windows) do window.tab.index = newIndex end
 	if removed and self.currentBuffer == removed.buffer then
 		self.currentBuffer = self.windows[1] and self.windows[1].buffer
@@ -266,10 +289,63 @@ test("reconcile leaves exactly one tab for each joined guild", function()
 	container:AddWindow("Old Guild")
 	assert(#container.windows == 4)
 	tabs:Reconcile()
-	assert(#container.windows == GetNumGuilds() + 1)
+	-- Normal, one per guild, and the group tab.
+	assert(#container.windows == GetNumGuilds() + 2)
 	assert(container:GetTabName(1) == "Normal")
 	assert(container:GetTabName(2) == "Guild One")
 	assert(PBS_CHAT_ASSISTANT.sv.guildTabNames["999"] == nil)
+end)
+
+test("reconcile adds one group tab carrying party chat only, and does not add it twice", function()
+	local groupIndex = tabs:GroupTabIndex(container)
+	assert(groupIndex and container:GetTabName(groupIndex) == "Group")
+	assert(PBS_CHAT_ASSISTANT.sv.groupTabName == "Group")
+	assert(container.filters[groupIndex][CHAT_CATEGORY_PARTY] == true)
+	assert(container.filters[groupIndex][CHAT_CATEGORY_GUILD_1] == false)
+	local before = #container.windows
+	tabs:Reconcile()
+	assert(#container.windows == before)
+end)
+
+test("the chord walks normal, group, then guilds in slot order, whatever order the tabs stand in", function()
+	guilds[2] = { id = 102, name = "Guild Two" }
+	tabs:Reconcile()
+	-- Physically: Normal, Guild One, Group, Guild Two. The group tab was made after Guild One.
+	assert(container:GetTabName(2) == "Guild One" and container:GetTabName(3) == "Group")
+	container.tabGroup = nil
+	assert(tabs:SelectTab(1, false, false))
+	local walked = {}
+	for _ = 1, 4 do
+		assert(tabs:Cycle(1))
+		walked[#walked + 1] = container:GetTabName(tabs:GetActiveIndex(container))
+	end
+	assert(table.concat(walked, ",") == "Group,Guild One,Guild Two,Normal", table.concat(walked, ","))
+end)
+
+test("the group tab sends to party chat, in party colour, and normal restores the earlier channel", function()
+	assert(tabs:SelectTab(1, false, false))
+	chat.currentChannel = CHAT_CHANNEL_ZONE
+	tabs.normalChannel = CHAT_CHANNEL_ZONE
+	assert(tabs:Cycle(1))
+	assert(container:GetTabName(tabs:GetActiveIndex(container)) == "Group")
+	assert(chat.currentChannel == CHAT_CHANNEL_PARTY)
+	assert(tabs.indicatorLabel.text == "Group")
+	assert(tabs.indicatorLabel.colour[1] == 0.1 and tabs.indicatorLabel.colour[2] == 0.9)
+	assert(tabs:SelectTab(1, false))
+	assert(chat.currentChannel == CHAT_CHANNEL_ZONE)
+end)
+
+test("choosing party chat through the game selects the group tab", function()
+	chat:SetChannel(CHAT_CHANNEL_PARTY)
+	assert(container:GetTabName(tabs:GetActiveIndex(container)) == "Group")
+	assert(chat.currentChannel == CHAT_CHANNEL_PARTY)
+end)
+
+test("turning the tabs off removes the group tab too", function()
+	tabs:RemoveAll()
+	assert(tabs:GroupTabIndex(container) == nil)
+	assert(PBS_CHAT_ASSISTANT.sv.groupTabName == nil)
+	assert(#container.windows == 1)
 end)
 
 print(count .. " tests passed")
