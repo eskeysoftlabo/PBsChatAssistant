@@ -1,6 +1,9 @@
 -- Run from the add-on directory: lua test/hud_channel.lua
 local time, analog, block, gamepad, sceneName, entryOpen, ime = 0, 0, false, true, 'hud', false, false
 local combat = false
+local leftStickX, rightStickX = 0, 0
+function GetGamepadLeftStickX() return leftStickX end
+function GetGamepadRightStickX() return rightStickX end
 local events, updates = {}, {}
 EVENT_ADD_ON_LOADED, EVENT_PLAYER_ACTIVATED, EVENT_PLAYER_DEACTIVATED = 1, 2, 3
 EVENT_CONTROLLER_DISCONNECTED, EVENT_CONTROLLER_CONNECTED = 4, 5
@@ -46,6 +49,7 @@ local count = 0
 local function test(name, fn) fn(); count = count + 1; print('PASS '..name) end
 local function reset()
  c:Stop(); combat = false; time = 0; analog = 0; block = false; gamepad = true
+ leftStickX, rightStickX = 0, 0
  sceneName = 'hud'; entryOpen = false; ime = false; chat.currentChannel = 1
  PBS_CHAT_ASSISTANT.sv = {enabled = true, hudChannelEnabled = true, captureMode = 'off'}
  c:Start()
@@ -68,6 +72,17 @@ end)
 test('L2 plus Right cycles once and repeat Down does not cycle again', function()
  reset(); hold(); assert(c:OnRightDown()); assert(c:OnRightDown()); assert(chat.currentChannel == 2)
  assert(c:OnRightUp()); assert(c:OnRightDown()); assert(chat.currentChannel == 3); c:OnRightUp()
+end)
+test('L2 plus stick right is declined and does not switch, D-pad right still does', function()
+ reset(); hold()
+ leftStickX = 0.9
+ assert(not c:OnRightDown()); assert(chat.currentChannel == 1)
+ assert(not c:OnRightUp())
+ leftStickX = 0; rightStickX = -0.8
+ assert(not c:OnRightDown()); assert(chat.currentChannel == 1)
+ assert(not c:OnRightUp())
+ rightStickX = 0.1
+ assert(c:OnRightDown()); assert(chat.currentChannel == 2); assert(c:OnRightUp())
 end)
 test('L2 release before Right keeps quest block until after Up', function()
  reset(); hold(); c:OnRightDown(); analog = 0; c:Update(); assert(c.layerAdded)
